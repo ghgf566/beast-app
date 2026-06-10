@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BEAST 美食地圖</title>
+    <!-- Google Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+TC:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet.js 地圖套件 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- 共用樣式 -->
+    <link rel="stylesheet" href="style.css?v=2.0">
+    
+    <!-- 🌟 手機端專屬 App 樣式 -->
+    <style>
+        body { background-color: #080810; margin: 0; padding: 0; overflow-x: hidden; }
+        .dark-map-tiles { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+        
+        /* 導覽列 */
+        .app-navbar { position: fixed; top: 0; width: 100%; height: 60px; background: rgba(8, 8, 16, 0.85); backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; z-index: 1000; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .nav-logo { font-family: 'Outfit', sans-serif; font-size: 1.5rem; font-weight: 800; color: #00f2fe; text-decoration: none; }
+        .nav-actions button { background: transparent; border: 1px solid #00f2fe; color: #00f2fe; padding: 5px 15px; border-radius: 20px; font-size: 0.9rem; cursor: pointer; transition: 0.3s; }
+        
+        /* Landing Page 首頁 */
+        .hero-section { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; position: relative; }
+        .hero-title { font-size: 2.8rem; font-weight: 800; background: var(--primary-gradient); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px; }
+        .hero-subtitle { font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 30px; line-height: 1.6; }
+        .hero-btn { background: var(--primary-gradient); color: #fff; border: none; padding: 15px 40px; font-size: 1.2rem; border-radius: 30px; cursor: pointer; box-shadow: 0 5px 20px rgba(0,242,254,0.3); font-weight: 600; }
+
+        /* 使用者儀表板 (App 視圖) */
+        .app-container { padding: 80px 20px 80px 20px; max-width: 600px; margin: 0 auto; min-height: 100vh; box-sizing: border-box; }
+        
+        /* 模擬數據開關 */
+        .sim-toggle-wrapper { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 20px; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #00f2fe; }
+        input:checked + .slider:before { transform: translateX(24px); }
+
+        /* 大錄製按鈕 */
+        .record-btn-wrapper { display: flex; justify-content: center; margin: 30px 0; }
+        .record-btn { width: 160px; height: 160px; border-radius: 50%; background: rgba(0,242,254,0.1); border: 2px solid #00f2fe; color: #00f2fe; font-size: 1.5rem; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 0 30px rgba(0,242,254,0.2); outline: none; }
+        .record-btn.recording { border-color: #ff3366; color: #ff3366; background: rgba(255,51,102,0.1); box-shadow: 0 0 40px rgba(255,51,102,0.5); animation: pulseRecord 1.5s infinite; }
+        @keyframes pulseRecord { 0% { transform: scale(1); box-shadow: 0 0 20px rgba(255,51,102,0.4); } 50% { transform: scale(1.05); box-shadow: 0 0 40px rgba(255,51,102,0.8); } 100% { transform: scale(1); box-shadow: 0 0 20px rgba(255,51,102,0.4); } }
+        
+        .live-stats { display: flex; justify-content: space-around; background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
+        .stat-item { text-align: center; }
+        .stat-item i { font-size: 1.2rem; margin-bottom: 5px; }
+        .stat-item span { display: block; font-weight: bold; font-size: 1.1rem; color: #fff; }
+
+        /* 分頁切換 (草稿 / 歷史) */
+        .tabs { display: flex; margin-top: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .tab-btn { flex: 1; padding: 12px; text-align: center; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: 0.3s; }
+        .tab-btn.active { color: #00f2fe; border-bottom-color: #00f2fe; font-weight: bold; }
+
+        /* 列表卡片 */
+        .list-card { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px; margin-top: 15px; display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.05); }
+        .list-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .draft-actions { display: flex; gap: 10px; margin-top: 10px; }
+        .draft-actions button { flex: 1; padding: 8px; border-radius: 5px; cursor: pointer; border: none; font-weight: bold; }
+        .btn-publish { background: var(--success-gradient); color: #000; }
+        .btn-discard { background: rgba(255,51,102,0.2); color: #ff3366; border: 1px solid #ff3366 !important; }
+
+        /* 表單與 Modal 樣式覆寫 */
+        .cyber-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 2000; opacity: 0; pointer-events: none; transition: 0.3s; padding: 15px; box-sizing: border-box; }
+        .cyber-modal.active { opacity: 1; pointer-events: auto; }
+        .cyber-modal-content { background: #0d0d1a; border: 1px solid #00f2fe; border-radius: 15px; padding: 20px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative; }
+        .cyber-input, .cyber-select { width: 100%; padding: 12px; margin-bottom: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 8px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    <!-- 頂部導覽列 -->
+    <nav class="app-navbar">
+        <a href="#" class="nav-logo">BEAST</a>
+        <div class="nav-actions" id="nav-actions">
+            <button onclick="showAuthModal()">登入 / 註冊</button>
+        </div>
+    </nav>
+
+    <!-- ========================================== -->
+    <!-- 首頁 Landing Page -->
+    <!-- ========================================== -->
+    <section id="view-landing" class="hero-section">
+        <div class="glow-circles"><div class="circle circle-1"></div></div>
+        <i class="fa-solid fa-utensils" style="font-size: 4rem; color: #00f2fe; margin-bottom: 20px; filter: drop-shadow(0 0 15px rgba(0,242,254,0.5));"></i>
+        <h1 class="hero-title">仲夏夜之夢</h1>
+        <p class="hero-subtitle">全台首創會員制美食地圖<br>結合 IoT 感官追蹤，發掘城市中最野性的美味特質。</p>
+        <button class="hero-btn" onclick="showAuthModal()">加入我們，開始探索</button>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- 使用者操作儀表板 -->
+    <!-- ========================================== -->
+    <section id="view-dashboard" class="app-container hidden">
+        
+        <!-- IoT 模擬開關 -->
+        <div class="sim-toggle-wrapper">
+            <div>
+                <strong style="color:#fff; font-size:1.1rem; display:block;">設備連接狀態</strong>
+                <span id="device-status-text" style="color:var(--text-secondary); font-size:0.85rem;">啟用模擬數據產生器</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="sim-toggle" checked>
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <!-- 錄製區塊 -->
+        <div style="text-align: center; color: var(--text-secondary); margin-bottom: -10px;">
+            <span id="record-timer">00:00</span>
+        </div>
+        
+        <div class="record-btn-wrapper">
+            <button id="record-btn" class="record-btn" onclick="toggleRecording()">
+                <i id="record-icon" class="fa-solid fa-microphone-lines" style="font-size: 2.5rem; margin-bottom: 10px;"></i>
+                <span id="record-text" style="font-weight: 600;">開始記錄</span>
+            </button>
+        </div>
+
+        <!-- 即時感測資料預覽 -->
+        <div class="live-stats">
+            <div class="stat-item">
+                <i class="fa-solid fa-temperature-half" style="color: var(--temp-color);"></i>
+                <span id="live-temp">--.-</span>
+            </div>
+            <div class="stat-item">
+                <i class="fa-solid fa-droplet" style="color: var(--humid-color);"></i>
+                <span id="live-humid">--.-</span>
+            </div>
+            <div class="stat-item">
+                <i class="fa-solid fa-volume-high" style="color: var(--noise-color);"></i>
+                <span id="live-noise">--.-</span>
+            </div>
+        </div>
+
+        <!-- 分頁控制 -->
+        <div class="tabs">
+            <div class="tab-btn active" onclick="switchTab('drafts')" id="tab-drafts">草稿匣 (<span id="draft-count">0</span>)</div>
+            <div class="tab-btn" onclick="switchTab('history')" id="tab-history">已發布紀錄</div>
+        </div>
+
+        <!-- 草稿匣列表 -->
+        <div id="list-drafts">
+            <!-- 草稿項目將由 JS 產生 -->
+        </div>
+
+        <!-- 歷史紀錄列表 -->
+        <div id="list-history" class="hidden">
+            <!-- 歷史項目將由 JS 產生 -->
+            <p style="text-align:center; color:var(--text-secondary); margin-top: 20px;">載入中...</p>
+        </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- 登入/註冊 Modal -->
+    <!-- ========================================== -->
+    <div id="auth-modal" class="cyber-modal">
+        <div class="cyber-modal-content">
+            <h3 style="color: #00f2fe; margin-top: 0;">歡迎回來</h3>
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">請登入或註冊以同步您的探店紀錄。</p>
+            
+            <div id="auth-error" style="color: #ff3366; font-size: 0.9rem; margin-bottom: 10px; display: none;"></div>
+            
+            <input type="text" id="auth-username" class="cyber-input" placeholder="帳號 / 使用者名稱">
+            <input type="password" id="auth-password" class="cyber-input" placeholder="密碼">
+            
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button class="hero-btn" style="flex: 1; padding: 12px;" onclick="submitAuth('login')">登入</button>
+                <button class="hero-btn" style="flex: 1; padding: 12px; background: transparent; border: 1px solid #00f2fe; color: #00f2fe; box-shadow: none;" onclick="submitAuth('register')">註冊</button>
+            </div>
+            <button style="width: 100%; margin-top: 15px; background: transparent; border: none; color: var(--text-secondary); padding: 10px;" onclick="document.getElementById('auth-modal').classList.remove('active')">取消</button>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 🌟 草稿發布與地標定位 Modal -->
+    <!-- ========================================== -->
+    <div id="publish-modal" class="cyber-modal">
+        <div class="cyber-modal-content">
+            <h3 style="color: #00f2fe; margin-top: 0; border-bottom: 1px solid rgba(0,242,254,0.3); padding-bottom: 10px;">
+                <i class="fa-solid fa-cloud-arrow-up"></i> 歸檔與評價
+            </h3>
+            
+            <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 15px; display: flex; justify-content: space-between;">
+                <span>⏱️ <span id="pub-duration" style="color:#00ff87;">0</span>s</span>
+                <span>🌡️ <span id="pub-temp">0</span>°C</span>
+                <span>🔊 <span id="pub-noise">0</span>dB</span>
+            </div>
+
+            <!-- 地圖與定位 -->
+            <label style="color:var(--text-secondary); font-size:0.9rem;">📍 定位您的位置</label>
+            <div id="publish-map" style="height: 150px; width: 100%; border-radius: 8px; margin: 8px 0; border: 1px solid rgba(255,255,255,0.1);"></div>
+            <div id="pub-gps-status" style="font-size: 0.8rem; color: #f093fb; margin-bottom: 10px; text-align: right;">尋找 GPS 中...</div>
+
+            <!-- 選擇或新增地標 -->
+            <select id="pub-restaurant-select" class="cyber-select hidden"></select>
+            <button id="pub-add-new-btn" class="cyber-select" style="background: transparent; text-align: left; cursor: pointer; color: #00f2fe;" onclick="toggleNewRestForm()">➕ 創建新地標...</button>
+            
+            <div id="pub-new-rest-form" class="hidden" style="margin-bottom: 15px; padding-left: 10px; border-left: 2px solid #00f2fe;">
+                <input type="text" id="pub-new-name" class="cyber-input" placeholder="店家名稱 (必填)" style="padding: 8px; margin-bottom: 8px;">
+                <input type="text" id="pub-new-hours" class="cyber-input" placeholder="營業時間 (選填)" style="padding: 8px; margin-bottom: 8px;">
+            </div>
+
+            <!-- 評價與名稱 -->
+            <input type="text" id="pub-record-name" class="cyber-input" placeholder="為這筆紀錄命名 (必填)">
+            <select id="pub-rating" class="cyber-select">
+                <option value="5">⭐⭐⭐⭐⭐ 極神</option>
+                <option value="4">⭐⭐⭐⭐ 美味</option>
+                <option value="3">⭐⭐⭐ 普普</option>
+                <option value="2">⭐⭐ 不佳</option>
+                <option value="1">⭐ 糟糕</option>
+            </select>
+            <textarea id="pub-review" class="cyber-input" rows="3" placeholder="請描述您的用餐體驗..."></textarea>
+
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button class="hero-btn" style="flex: 1; padding: 12px; background: transparent; border: 1px solid #a0a0c0; color: #a0a0c0; box-shadow: none;" onclick="closePublishModal()">取消</button>
+                <button class="hero-btn" style="flex: 1; padding: 12px;" onclick="submitPublish()">確認發布</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 核心 JS 邏輯 -->
+    <!-- ========================================== -->
+    <script>
+        const isLocalFile = window.location.protocol === 'file:';
+        const API_BASE = isLocalFile ? 'http://127.0.0.1:5000' : window.location.origin;
+
+        // Cookie 工具
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) { let date = new Date(); date.setTime(date.getTime() + (days*24*60*60*1000)); expires = "; expires=" + date.toUTCString(); }
+            document.cookie = name + "=" + (value||"")  + expires + "; path=/";
+        }
+        function getCookie(name) {
+            let nameEQ = name + "="; let ca = document.cookie.split(';');
+            for(let i=0;i < ca.length;i++) {
+                let c = ca[i].trim();
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        // 狀態變數
+        let currentUser = null;
+        let isRecording = false;
+        let recordStartTime = 0;
+        let recordTimerInterval = null;
+        let simInterval = null;
+        let currentTemp = 0, currentHumid = 0, currentNoise = 0;
+        let tempArr = [], humidArr = [], noiseArr = [];
+        
+        let drafts = JSON.parse(localStorage.getItem('beast_drafts') || '[]');
+        let activeDraftId = null;
+
+        let pubMap = null;
+        let pubMarker = null;
+        let currentGPS = { lat: 24.1495, lng: 120.6835 };
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = getCookie('beast_token');
+            const savedUser = getCookie('beast_user');
+            if (token && savedUser) {
+                currentUser = JSON.parse(decodeURIComponent(savedUser));
+                showAppView();
+            }
+            
+            // 監聽模擬開關
+            document.getElementById('sim-toggle').addEventListener('change', (e) => {
+                document.getElementById('device-status-text').textContent = e.target.checked ? "啟用模擬數據產生器" : "等待真實 IoT 連線...";
+            });
+
+            // 啟動背景數據擷取
+            startDataStream();
+            renderDrafts();
+        });
+
+        // 畫面切換
+        function showAuthModal() { document.getElementById('auth-modal').classList.add('active'); document.getElementById('auth-error').style.display = 'none'; }
+        function showAppView() {
+            document.getElementById('view-landing').style.display = 'none';
+            document.getElementById('view-dashboard').classList.remove('hidden');
+            document.getElementById('nav-actions').innerHTML = `<button onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> 登出</button>`;
+        }
+        function switchTab(tab) {
+            document.getElementById('tab-drafts').classList.remove('active');
+            document.getElementById('tab-history').classList.remove('active');
+            document.getElementById('list-drafts').classList.add('hidden');
+            document.getElementById('list-history').classList.add('hidden');
+            
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            document.getElementById(`list-${tab}`).classList.remove('hidden');
+
+            if(tab === 'history') fetchHistory();
+        }
+
+        // 會員邏輯
+        async function submitAuth(type) {
+            const user = document.getElementById('auth-username').value.trim();
+            const pass = document.getElementById('auth-password').value;
+            const errBox = document.getElementById('auth-error');
+            if (!user || !pass) { errBox.textContent = "請填寫帳號密碼"; errBox.style.display = 'block'; return; }
+            
+            try {
+                const endpoint = type === 'login' ? '/api/login' : '/api/register';
+                const res = await fetch(`${API_BASE}${endpoint}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: user, password: pass })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    setCookie('beast_token', data.token, 7);
+                    setCookie('beast_user', encodeURIComponent(JSON.stringify(data.user)), 7);
+                    currentUser = data.user;
+                    document.getElementById('auth-modal').classList.remove('active');
+                    showAppView();
+                } else {
+                    errBox.textContent = data.message; errBox.style.display = 'block';
+                }
+            } catch (err) { errBox.textContent = "連線失敗"; errBox.style.display = 'block'; }
+        }
+
+        function logout() {
+            setCookie('beast_token', '', -1); setCookie('beast_user', '', -1);
+            location.reload();
+        }
+
+        // 數據流擷取 (混合真實與模擬)
+        function startDataStream() {
+            setInterval(async () => {
+                const isSimMode = document.getElementById('sim-toggle').checked;
+                
+                if (isSimMode) {
+                    // 純前端模擬產生
+                    currentTemp = 22 + Math.random() * 8;
+                    currentHumid = 50 + Math.random() * 30;
+                    currentNoise = 45 + Math.random() * 40;
+                    updateDashboardUI();
+                } else {
+                    // 從後端抓取 IoT 數據
+                    try {
+                        const res = await fetch(`${API_BASE}/api/latest`);
+                        const data = await res.json();
+                        currentTemp = data.avg_temp_c || 0;
+                        currentHumid = data.avg_humidity || 0;
+                        currentNoise = data.avg_noise_db || 0;
+                        updateDashboardUI();
+                    } catch(e) {}
+                }
+
+                if (isRecording) {
+                    tempArr.push(currentTemp); humidArr.push(currentHumid); noiseArr.push(currentNoise);
+                }
+            }, 1000);
+        }
+
+        function updateDashboardUI() {
+            document.getElementById('live-temp').textContent = currentTemp.toFixed(1);
+            document.getElementById('live-humid').textContent = currentHumid.toFixed(1);
+            document.getElementById('live-noise').textContent = currentNoise.toFixed(1);
+        }
+
+        // 🔴 錄製邏輯
+        function toggleRecording() {
+            const btn = document.getElementById('record-btn');
+            const icon = document.getElementById('record-icon');
+            const text = document.getElementById('record-text');
+            const timer = document.getElementById('record-timer');
+
+            if (!isRecording) {
+                // 開始
+                isRecording = true;
+                tempArr = []; humidArr = []; noiseArr = [];
+                recordStartTime = Date.now();
+                
+                btn.classList.add('recording');
+                icon.className = "fa-solid fa-stop";
+                text.textContent = "停止並暫存";
+
+                recordTimerInterval = setInterval(() => {
+                    const diff = Math.floor((Date.now() - recordStartTime) / 1000);
+                    const m = String(Math.floor(diff / 60)).padStart(2, '0');
+                    const s = String(diff % 60).padStart(2, '0');
+                    timer.textContent = `錄製中 ${m}:${s}`;
+                }, 1000);
+            } else {
+                // 停止並存入草稿
+                isRecording = false;
+                clearInterval(recordTimerInterval);
+                const duration = Math.floor((Date.now() - recordStartTime) / 1000);
+                
+                btn.classList.remove('recording');
+                icon.className = "fa-solid fa-microphone-lines";
+                text.textContent = "開始記錄";
+                timer.textContent = "00:00";
+
+                if (duration < 3) { alert("記錄過短，已捨棄。"); return; }
+
+                const draft = {
+                    id: Date.now(),
+                    date: new Date().toLocaleString(),
+                    duration: duration,
+                    temp: tempArr.reduce((a,b)=>a+b,0) / tempArr.length,
+                    humid: humidArr.reduce((a,b)=>a+b,0) / humidArr.length,
+                    noise: noiseArr.reduce((a,b)=>a+b,0) / noiseArr.length
+                };
+
+                drafts.push(draft);
+                localStorage.setItem('beast_drafts', JSON.stringify(drafts));
+                renderDrafts();
+                alert("✅ 紀錄已存入草稿匣！請點擊發布進行歸檔。");
+            }
+        }
+
+        // 📋 草稿匣渲染
+        function renderDrafts() {
+            const list = document.getElementById('list-drafts');
+            document.getElementById('draft-count').textContent = drafts.length;
+            list.innerHTML = '';
+            
+            if(drafts.length === 0) {
+                list.innerHTML = '<p style="text-align:center; color:var(--text-secondary); margin-top:20px;">無暫存草稿</p>'; return;
+            }
+
+            drafts.slice().reverse().forEach(d => {
+                const card = document.createElement('div');
+                card.className = 'list-card';
+                card.innerHTML = `
+                    <div class="list-card-header">
+                        <span style="color:#00f2fe; font-weight:bold;">未發布的紀錄</span>
+                        <span style="font-size:0.8rem; color:var(--text-secondary);">${d.date}</span>
+                    </div>
+                    <div style="font-size:0.9rem; color:#ccc;">時長: ${d.duration}s | 均溫: ${d.temp.toFixed(1)}°C | 噪音: ${d.noise.toFixed(1)}dB</div>
+                    <div class="draft-actions">
+                        <button class="btn-discard" onclick="discardDraft(${d.id})">捨棄</button>
+                        <button class="btn-publish" onclick="openPublishModal(${d.id})">定位並發布</button>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function discardDraft(id) {
+            if(confirm('確定刪除此草稿？')) {
+                drafts = drafts.filter(d => d.id !== id);
+                localStorage.setItem('beast_drafts', JSON.stringify(drafts));
+                renderDrafts();
+            }
+        }
+
+        // ==========================================
+        // 🚀 歸檔發布邏輯 (含 LBS 地圖)
+        // ==========================================
+        function openPublishModal(id) {
+            activeDraftId = id;
+            const draft = drafts.find(d => d.id === id);
+            
+            document.getElementById('pub-duration').textContent = draft.duration;
+            document.getElementById('pub-temp').textContent = draft.temp.toFixed(1);
+            document.getElementById('pub-noise').textContent = draft.noise.toFixed(1);
+            
+            document.getElementById('publish-modal').classList.add('active');
+            
+            // 初始化地圖
+            if (!pubMap) {
+                pubMap = L.map('publish-map').setView([24.1495, 120.6835], 16);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { className: 'dark-map-tiles' }).addTo(pubMap);
+                pubMap.on('click', (e) => {
+                    currentGPS.lat = e.latlng.lat; currentGPS.lng = e.latlng.lng;
+                    updatePubMarker();
+                    fetchNearbyStores();
+                });
+            }
+            setTimeout(() => { pubMap.invalidateSize(); locateForPublish(); }, 300);
+        }
+
+        function closePublishModal() { document.getElementById('publish-modal').classList.remove('active'); activeDraftId = null; }
+        
+        function toggleNewRestForm() {
+            const form = document.getElementById('pub-new-rest-form');
+            form.classList.toggle('hidden');
+        }
+
+        function updatePubMarker() {
+            if(pubMarker) pubMap.removeLayer(pubMarker);
+            const icon = L.divIcon({ className: 'user-gps-marker', html: '<i class="fa-solid fa-map-pin" style="color: #f000ff; font-size: 24px;"></i>', iconSize: [24,24] });
+            pubMarker = L.marker([currentGPS.lat, currentGPS.lng], {icon: icon}).addTo(pubMap);
+            pubMap.flyTo([currentGPS.lat, currentGPS.lng], 17);
+        }
+
+        function locateForPublish() {
+            if("geolocation" in navigator) {
+                document.getElementById('pub-gps-status').textContent = "正在掃描精確定位...";
+                navigator.geolocation.getCurrentPosition(pos => {
+                    currentGPS.lat = pos.coords.latitude; currentGPS.lng = pos.coords.longitude;
+                    updatePubMarker();
+                    fetchNearbyStores();
+                }, err => {
+                    document.getElementById('pub-gps-status').textContent = "無法定位，請直接點擊地圖打點！";
+                }, { enableHighAccuracy: true });
+            }
+        }
+
+        async function fetchNearbyStores() {
+            document.getElementById('pub-gps-status').textContent = `已鎖定: ${currentGPS.lat.toFixed(4)}, ${currentGPS.lng.toFixed(4)}`;
+            try {
+                const res = await fetch(`${API_BASE}/api/nearby?lat=${currentGPS.lat}&lng=${currentGPS.lng}`, { headers: { 'Authorization': `Bearer ${getCookie('beast_token')}` }});
+                const stores = await res.json();
+                const select = document.getElementById('pub-restaurant-select');
+                select.innerHTML = '';
+                
+                if(stores.length > 0) {
+                    stores.forEach(s => { select.innerHTML += `<option value="${s.id}">📍 ${s.name}</option>`; });
+                    select.classList.remove('hidden');
+                } else {
+                    select.classList.add('hidden');
+                    document.getElementById('pub-new-rest-form').classList.remove('hidden');
+                }
+            } catch(e) {}
+        }
+
+        async function submitPublish() {
+            const draft = drafts.find(d => d.id === activeDraftId);
+            const recordName = document.getElementById('pub-record-name').value.trim();
+            if(!recordName) { alert("請為紀錄命名！"); return; }
+            
+            const token = getCookie('beast_token');
+            let finalRestId = document.getElementById('pub-restaurant-select').value;
+            const newRestForm = document.getElementById('pub-new-rest-form');
+
+            try {
+                // 若表單有開且有輸入名稱，優先建立新店家
+                if (!newRestForm.classList.contains('hidden') && document.getElementById('pub-new-name').value.trim() !== '') {
+                    const rRes = await fetch(`${API_BASE}/api/add-restaurant`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ name: document.getElementById('pub-new-name').value, business_hours: document.getElementById('pub-new-hours').value, lat: currentGPS.lat, lng: currentGPS.lng })
+                    });
+                    const rData = await rRes.json();
+                    if(!rData.success) { alert("創建地標失敗"); return; }
+                    finalRestId = rData.restaurant_id;
+                }
+
+                if(!finalRestId) { alert("請選擇地標或輸入新地標名稱！"); return; }
+
+                // 上傳紀錄
+                const saveRes = await fetch(`${API_BASE}/api/save`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        record_name: recordName, restaurant_id: finalRestId,
+                        avg_temp_c: draft.temp, avg_humidity: draft.humid, avg_noise_db: draft.noise, duration_sec: draft.duration,
+                        review_text: document.getElementById('pub-review').value, rating: parseInt(document.getElementById('pub-rating').value)
+                    })
+                });
+                const saveData = await saveRes.json();
+
+                if(saveData.success) {
+                    alert("✅ 發布成功！");
+                    discardDraft(activeDraftId); // 從草稿移除
+                    closePublishModal();
+                    switchTab('history'); // 跳轉歷史
+                } else { alert("發布失敗: " + saveData.message); }
+
+            } catch(e) { alert("伺服器連線失敗"); }
+        }
+
+        // ==========================================
+        // 📚 歷史紀錄拉取
+        // ==========================================
+        async function fetchHistory() {
+            const list = document.getElementById('list-history');
+            list.innerHTML = '<p style="text-align:center; color:var(--text-secondary); margin-top:20px;"><i class="fa-solid fa-spinner fa-spin"></i> 載入中...</p>';
+            try {
+                const res = await fetch(`${API_BASE}/api/history`, { headers: { 'Authorization': `Bearer ${getCookie('beast_token')}` }});
+                const data = await res.json();
+                list.innerHTML = '';
+                
+                if(!data.records || data.records.length === 0) {
+                    list.innerHTML = '<p style="text-align:center; color:var(--text-secondary); margin-top:20px;">尚無發布紀錄</p>'; return;
+                }
+
+                data.records.forEach(r => {
+                    const stars = "⭐".repeat(r.rating || 5);
+                    const card = document.createElement('div');
+                    card.className = 'list-card';
+                    card.innerHTML = `
+                        <div class="list-card-header">
+                            <span style="color:#fff; font-weight:bold;">${r.record_name}</span>
+                            <span style="font-size:0.8rem; color:var(--text-secondary);">${r.created_at.split(' ')[0]}</span>
+                        </div>
+                        <div style="color:#00f2fe; font-size:0.9rem; margin-bottom:5px;">📍 ${r.rest_name || "未知地標"} <span style="margin-left:10px;">${stars}</span></div>
+                        <div style="font-size:0.85rem; color:#ccc; margin-bottom:5px;">均溫: ${r.avg_temp_c.toFixed(1)}°C | 噪音: ${r.avg_noise_db.toFixed(1)}dB</div>
+                        <div style="font-size:0.9rem; color:var(--text-secondary); background:rgba(0,0,0,0.3); padding:8px; border-radius:5px; margin-top:5px;">${r.review_text || '無文字評論'}</div>
+                    `;
+                    list.appendChild(card);
+                });
+            } catch(e) { list.innerHTML = '<p style="text-align:center; color:red; margin-top:20px;">載入失敗</p>'; }
+        }
+    </script>
+</body>
+</html>
