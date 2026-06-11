@@ -28,7 +28,7 @@ app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = 'beast_super_secret_key_114514' 
 CORS(app)
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://請換成你的_neon_連線字串_包含密碼@ep-xxx.aws.neon.tech/neondb?sslmode=require")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_KR2v4NGQonrk@ep-shy-dust-ao2dp1xn-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
 UPSTASH_REDIS_URL = os.environ.get("REDIS_URL", "rediss://default:AaaWAAIgcDE3MzU1ZGUyYjE2NTE0NGZhODgwYmRkMDc2MjM3NDIwMw@internal-titmouse-42646.upstash.io:6379")
 
 try:
