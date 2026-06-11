@@ -38,14 +38,13 @@ except: r = None
 
 latest_data = {
     "avg_noise_db": 0.0, "avg_temp_c": 0.0, "avg_humidity": 0.0,
-    "is_simulated": True, "status": "等待感測器數據..."
+    "is_simulated": True, "status": "等待設備連線..."
 }
 latest_data_lock = threading.RLock() 
 current_com_port = "COM5"
 com_port_lock = threading.Lock()
 serial_running = True
 
-# 🌟 新增：萬一 Redis 不在，本機記憶體負責保存硬體傳來的草稿
 hw_drafts_memory = {}
 hw_drafts_lock = threading.Lock()
 
@@ -133,6 +132,11 @@ def update_sensor_data(new_data):
 
 def serial_listener_thread():
     global current_com_port, serial_running
+    # 如果是在 Render 環境中執行，就不要啟動本地序列埠監聽 (會報錯)
+    if os.environ.get("RENDER") == "true" or os.environ.get("PORT"):
+        print("☁️ [環境提示] 正在雲端執行，停止本機序列埠監聽。請使用 gateway.py 傳送資料。")
+        return
+
     last_port = ""
     ser = None
     while serial_running:
@@ -163,34 +167,19 @@ def serial_listener_thread():
                             data = json.loads(raw_line)
                             device_id = data.get("device_id", "BEAST-001")
                             
-                            # 🌟 攔截 IoT 設備傳來的「物理紀錄草稿」
                             if data.get("action") == "save_draft":
                                 draft_payload = {
-                                    "id": int(time.time() * 1000),
-                                    "date": datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                                    "duration": data.get("duration_sec", 0),
-                                    "temp": data.get("avg_temp_c", 0.0),
-                                    "humid": data.get("avg_humidity", 0.0),
-                                    "noise": data.get("avg_noise_db", 0.0)
+                                    "id": int(time.time() * 1000), "date": datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
+                                    "duration": data.get("duration_sec", 0), "temp": data.get("avg_temp_c", 0.0), "humid": data.get("avg_humidity", 0.0), "noise": data.get("avg_noise_db", 0.0)
                                 }
-                                # 存入 Redis 佇列，或備用記憶體
-                                if r: 
-                                    r.lpush(f"beast:hw_drafts:{device_id}", json.dumps(draft_payload))
+                                if r: r.lpush(f"beast:hw_drafts:{device_id}", json.dumps(draft_payload))
                                 else:
                                     with hw_drafts_lock:
                                         if device_id not in hw_drafts_memory: hw_drafts_memory[device_id] = []
                                         hw_drafts_memory[device_id].append(draft_payload)
-                                continue # 這是草稿，不更新即時數值
+                                continue
 
-                            # 更新即時數據面板
-                            update_sensor_data({
-                                "avg_noise_db": data.get("avg_noise_db", 0.0), 
-                                "avg_temp_c": data.get("avg_temp_c", 0.0), 
-                                "avg_humidity": data.get("avg_humidity", 0.0), 
-                                "is_simulated": False, 
-                                "status": data.get("status", f"正在接收數據 ({port})"), 
-                                "device_id": device_id
-                            })
+                            update_sensor_data({"avg_noise_db": data.get("avg_noise_db", 0.0), "avg_temp_c": data.get("avg_temp_c", 0.0), "avg_humidity": data.get("avg_humidity", 0.0), "is_simulated": False, "status": data.get("status", f"即時接收中"), "device_id": device_id})
                         except: pass
             except:
                 ser = None
@@ -198,14 +187,46 @@ def serial_listener_thread():
         else: time.sleep(2)
         time.sleep(0.1)
 
+# 🌟 全新：IoT 雲端閘道器 Webhook (讓你的筆電傳送資料過來)
+@app.route('/api/iot/webhook', methods=['POST'])
+def api_iot_webhook():
+    data = request.json
+    device_id = data.get("device_id", "BEAST-001")
+    
+    # 如果是硬體傳來的草稿
+    if data.get("action") == "save_draft":
+        draft_payload = {
+            "id": int(time.time() * 1000), "date": datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
+            "duration": data.get("duration_sec", 0), "temp": data.get("avg_temp_c", 0.0), 
+            "humid": data.get("avg_humidity", 0.0), "noise": data.get("avg_noise_db", 0.0)
+        }
+        if r: r.lpush(f"beast:hw_drafts:{device_id}", json.dumps(draft_payload))
+        else:
+            with hw_drafts_lock:
+                if device_id not in hw_drafts_memory: hw_drafts_memory[device_id] = []
+                hw_drafts_memory[device_id].append(draft_payload)
+        return jsonify({"success": True, "message": "Draft saved via Webhook"})
+        
+    # 如果是即時動態數據
+    else:
+        update_sensor_data({
+            "avg_noise_db": data.get("avg_noise_db", 0.0),
+            "avg_temp_c": data.get("avg_temp_c", 0.0),
+            "avg_humidity": data.get("avg_humidity", 0.0),
+            "is_simulated": False,
+            "status": data.get("status", "雲端接收中 (Gateway)"),
+            "device_id": device_id
+        })
+        return jsonify({"success": True})
+
+
 @app.route('/api/register', methods=['POST'])
 def api_register():
     data = request.json
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
-        cursor.execute("INSERT INTO users (username, password_hash, role, status, avatar_url, device_id) VALUES (%s, %s, 'user', 'active', '', '') RETURNING id",
-                       (data['username'], hash_password(data['password'])))
+        cursor.execute("INSERT INTO users (username, password_hash, role, status, avatar_url, device_id) VALUES (%s, %s, 'user', 'active', '', '') RETURNING id", (data['username'], hash_password(data['password'])))
         user_id = cursor.fetchone()['id']
         conn.commit()
         token = jwt.encode({'user_id': user_id}, app.config['SECRET_KEY'], algorithm="HS256")
@@ -261,16 +282,13 @@ def update_user_device(current_user):
         return jsonify({"success": False, "message": str(e)}), 500
     finally: conn.close()
 
-# 🌟 全新 API：讓手機來把硬體幫忙錄好的草稿給領走
 @app.route('/api/user/hw-drafts', methods=['GET'])
 @token_required
 def sync_hw_drafts(current_user):
     device_id = current_user.get('device_id')
     if not device_id: return jsonify({"success": True, "drafts": []})
-    
     drafts = []
     if r:
-        # 把這個帳號的專屬草稿匣整個倒出來
         while True:
             item = r.rpop(f"beast:hw_drafts:{device_id}")
             if not item: break
@@ -280,7 +298,6 @@ def sync_hw_drafts(current_user):
             if device_id in hw_drafts_memory:
                 drafts = hw_drafts_memory[device_id]
                 hw_drafts_memory[device_id] = []
-                
     return jsonify({"success": True, "drafts": drafts})
 
 @app.route('/api/admin/users', methods=['GET'])
@@ -302,8 +319,7 @@ def admin_manage_user(current_user, user_id):
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT role FROM users WHERE id = %s", (user_id,))
     target_user = cursor.fetchone()
-    if current_user['role'] == 'admin' and (target_user['role'] in ['admin', 'owner']):
-        return jsonify({"success": False, "message": "無法修改同級或高層"}), 403
+    if current_user['role'] == 'admin' and (target_user['role'] in ['admin', 'owner']): return jsonify({"success": False, "message": "無法修改同級或高層"}), 403
 
     if request.method == 'DELETE':
         cursor.execute("DELETE FROM records WHERE user_id = %s", (user_id,))
@@ -335,13 +351,7 @@ def admin_manage_user(current_user, user_id):
 def admin_get_restaurants(current_user):
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    query = """
-        SELECT r.id, r.name, r.address, r.business_hours, 
-               COUNT(rec.id) as record_count, COALESCE(AVG(rec.rating), 0)::FLOAT as avg_rating
-        FROM restaurants r
-        LEFT JOIN records rec ON r.id = rec.restaurant_id
-        GROUP BY r.id ORDER BY r.id DESC
-    """
+    query = "SELECT r.id, r.name, r.address, r.business_hours, COUNT(rec.id) as record_count, COALESCE(AVG(rec.rating), 0)::FLOAT as avg_rating FROM restaurants r LEFT JOIN records rec ON r.id = rec.restaurant_id GROUP BY r.id ORDER BY r.id DESC"
     cursor.execute(query)
     stores = []
     for row in cursor.fetchall():
@@ -373,12 +383,7 @@ def admin_manage_restaurant(current_user, rest_id):
 def admin_get_rest_records(current_user, rest_id):
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("""
-        SELECT r.*, u.username 
-        FROM records r 
-        LEFT JOIN users u ON r.user_id = u.id 
-        WHERE r.restaurant_id = %s ORDER BY r.created_at DESC
-    """, (rest_id,))
+    cursor.execute("SELECT r.*, u.username FROM records r LEFT JOIN users u ON r.user_id = u.id WHERE r.restaurant_id = %s ORDER BY r.created_at DESC", (rest_id,))
     records = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return jsonify({"success": True, "records": records})
@@ -392,7 +397,6 @@ def api_latest():
             if cached: return jsonify(json.loads(cached))
         except: pass
         return jsonify({"status": f"等待設備 {device_id} 訊號...", "is_simulated": True, "avg_temp_c": 0, "avg_humidity": 0, "avg_noise_db": 0})
-
     if r:
         try:
             cached = r.get("beast:sensor:latest")
@@ -427,15 +431,7 @@ def get_restaurant_details(stores):
                 sum_noise += rec['avg_noise_db'] if rec['avg_noise_db'] is not None else 0
                 if rec['review_text']: all_reviews.append(rec['review_text'])
             avg_rating = total_rating / review_count; sum_temp /= review_count; sum_humid /= review_count; sum_noise /= review_count
-        results.append({
-            "id": s['id'], "name": s['name'], "lat": s['lat'], "lng": s['lng'],
-            "address": s['address'] or '無詳細地址紀錄', "business_hours": s['business_hours'] or '未設定營業時間',
-            "avg_rating": round(avg_rating, 1), "review_count": review_count,
-            "env_temp": round(sum_temp, 1) if sum_temp > 0 else 25.0,
-            "env_humid": round(sum_humid, 1) if sum_humid > 0 else 60.0,
-            "env_noise": round(sum_noise, 1) if sum_noise > 0 else 55.0,
-            "stars_distribution": stars_count, "reviews": all_reviews[-5:]
-        })
+        results.append({"id": s['id'], "name": s['name'], "lat": s['lat'], "lng": s['lng'], "address": s['address'] or '無詳細地址紀錄', "business_hours": s['business_hours'] or '未設定營業時間', "avg_rating": round(avg_rating, 1), "review_count": review_count, "env_temp": round(sum_temp, 1) if sum_temp > 0 else 25.0, "env_humid": round(sum_humid, 1) if sum_humid > 0 else 60.0, "env_noise": round(sum_noise, 1) if sum_noise > 0 else 55.0, "stars_distribution": stars_count, "reviews": all_reviews[-5:]})
     conn.close()
     return results
 
@@ -512,10 +508,8 @@ def api_history(current_user):
 def api_delete_record(current_user, record_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    if current_user['role'] in ['admin', 'owner']:
-        cursor.execute("DELETE FROM records WHERE id = %s", (record_id,))
-    else:
-        cursor.execute("DELETE FROM records WHERE id = %s AND user_id = %s", (record_id, current_user['id']))
+    if current_user['role'] in ['admin', 'owner']: cursor.execute("DELETE FROM records WHERE id = %s", (record_id,))
+    else: cursor.execute("DELETE FROM records WHERE id = %s AND user_id = %s", (record_id, current_user['id']))
     conn.commit()
     conn.close()
     return jsonify({"success": True})

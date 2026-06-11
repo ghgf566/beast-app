@@ -15,7 +15,6 @@
         .app-navbar { position: fixed; top: 0; left: 0; width: 100%; height: 60px; background: rgba(8, 8, 16, 0.85); backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; z-index: 2000; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.05); }
         .nav-logo { font-size: 1.5rem; font-weight: 800; background: var(--primary-gradient); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-decoration: none; display: flex; align-items: center; gap: 8px; }
         .nav-btn { background: transparent; border: 1px solid #00f2fe; color: #00f2fe; padding: 6px 16px; border-radius: 20px; cursor: pointer; transition: 0.3s; font-weight: bold; }
-        
         .user-avatar-btn { width: 38px; height: 38px; border-radius: 50%; background: #00f2fe; border: 2px solid #00f2fe; cursor: pointer; display: flex; justify-content: center; align-items: center; overflow: hidden; box-shadow: 0 0 10px rgba(0,242,254,0.4); }
         .user-avatar-btn img { width: 100%; height: 100%; object-fit: cover; }
         .user-avatar-btn i { color: #080810; font-size: 1.2rem; }
@@ -24,7 +23,6 @@
         .hero-section { min-height: 70vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; position: relative; }
         .hero-title { font-size: 3.5rem; font-weight: 800; background: var(--primary-gradient); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px; }
         .hero-subtitle { font-size: 1.2rem; color: var(--text-secondary); max-width: 600px; line-height: 1.6; margin-bottom: 30px; }
-        
         .info-section { padding: 60px 20px; max-width: 800px; margin: 0 auto; color: #fff; }
         .info-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 30px; border-radius: 15px; margin-bottom: 30px; }
         .info-card h3 { color: #f093fb; font-size: 1.5rem; margin-top: 0; display: flex; align-items: center; gap: 10px; }
@@ -61,8 +59,6 @@
         @keyframes pulseRecord { 0% { transform: scale(1); } 50% { transform: scale(1.08); box-shadow: 0 0 25px rgba(255,51,102,0.6); } 100% { transform: scale(1); } }
         .floating-timer { background: rgba(255,51,102,0.2); border: 1px solid #ff3366; color: #ff3366; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-family: monospace; font-size:0.85rem; display: none; margin-bottom: 5px;}
         .floating-timer.active { display: block; }
-        
-        /* 🌟 草稿數字紅點與同步動畫 */
         .draft-badge { position: absolute; top: -5px; right: -5px; background: #ff3366; color: #fff; font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
         @keyframes pulseSync { 0% { transform: scale(1); } 50% { transform: scale(1.3); box-shadow: 0 0 15px #ff3366; } 100% { transform: scale(1); } }
         .draft-badge.syncing { animation: pulseSync 1s infinite; }
@@ -264,7 +260,7 @@
         </div>
     </div>
 
-    <!-- 個人設定頁 -->
+    <!-- 獨立分頁 (個人中心) -->
     <div id="page-profile" class="full-page-overlay">
         <div class="page-header">
             <button onclick="document.getElementById('page-profile').classList.remove('active')"><i class="fa-solid fa-arrow-left"></i></button>
@@ -293,26 +289,41 @@
         </div>
     </div>
 
-    <!-- 設備綁定頁面 -->
+    <!-- 🌟 全新升級：設備綁定 & USB Web Serial 燒錄介面 -->
     <div id="page-device" class="full-page-overlay">
         <div class="page-header">
             <button onclick="document.getElementById('page-device').classList.remove('active')"><i class="fa-solid fa-arrow-left"></i></button>
-            <h2>設備綁定管理</h2>
+            <h2>設備與網路管理</h2>
         </div>
         <div class="page-content">
-            <div style="text-align:center; margin-bottom: 30px;">
-                <i class="fa-solid fa-satellite-dish" style="font-size: 4rem; color: #00ff87; filter: drop-shadow(0 0 15px rgba(0,255,135,0.4)); margin-bottom: 15px;"></i>
-                <h3 style="margin: 0; color: #fff;">BEAST 感測器綁定</h3>
+            <div style="text-align:center; margin-bottom: 20px;">
+                <i class="fa-solid fa-satellite-dish" style="font-size: 3rem; color: #00ff87; filter: drop-shadow(0 0 15px rgba(0,255,135,0.4)); margin-bottom: 10px;"></i>
+                <h3 style="margin: 0; color: #fff;">BEAST 專機綁定設定</h3>
             </div>
 
+            <!-- 帳號綁定區 -->
             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
-                <h4 style="margin: 0 0 10px 0; color: #00f2fe;"><i class="fa-solid fa-link"></i> 設定您的設備識別碼</h4>
-                <p style="color:#a0a0c0; font-size:0.85rem; line-height:1.6; margin-bottom:15px;">綁定後，您將可以專屬接收該硬體設備 (IoT) 的感官數據，並能在背景無縫接收您透過「實體按鈕」盲錄產生的草稿。</p>
+                <h4 style="margin: 0 0 10px 0; color: #00f2fe;"><i class="fa-solid fa-link"></i> 綁定設備識別碼</h4>
+                <p style="color:#a0a0c0; font-size:0.8rem; line-height:1.5; margin-bottom:15px;">輸入硬體設備背面的序號。綁定後即可專屬接收其傳送至雲端的草稿。</p>
                 <input type="text" id="bind-device-id" class="cyber-input" placeholder="例如: BEAST-001" style="background: rgba(0,0,0,0.5);">
                 <button class="hero-btn" onclick="saveDeviceBinding()">確認綁定設備</button>
             </div>
-            <div style="text-align: center; color: #a0a0c0; font-size: 0.8rem; margin-top: 30px;">
-                <p>⚠️ 測試階段無設備者，請輸入測試序號：<br><strong style="color:#00f2fe; font-size:1.1rem;">BEAST-001</strong></p>
+
+            <!-- 🌟 USB WiFi 燒錄區 -->
+            <div style="background: rgba(0,242,254,0.05); border: 1px solid rgba(0,242,254,0.2); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <h4 style="margin: 0 0 10px 0; color: #00f2fe;"><i class="fa-brands fa-usb"></i> USB 寫入 Wi-Fi 設定</h4>
+                <p style="color:#a0a0c0; font-size:0.8rem; line-height:1.5; margin-bottom:15px;">
+                    外出前請將 ESP32 接上電腦 USB。在此輸入您的手機熱點，設定將直接燒入設備記憶體！
+                    <br><span style="color:#ff3366;">(⚠️ 僅支援電腦版 Chrome / Edge 瀏覽器)</span>
+                </p>
+                
+                <input type="text" id="usb-ssid" class="cyber-input" placeholder="手機熱點名稱 (SSID)" style="background: rgba(0,0,0,0.5);">
+                <input type="password" id="usb-pass" class="cyber-input" placeholder="熱點密碼" style="background: rgba(0,0,0,0.5);">
+                
+                <div style="display: flex; gap: 10px; margin-top: 5px;">
+                    <button class="hero-btn" id="btn-connect-usb" style="background: transparent; border: 1px solid #00f2fe; color: #00f2fe;" onclick="connectUSB()">1. 連接 USB</button>
+                    <button class="hero-btn" id="btn-write-usb" style="background: #a0a0c0; color: #fff; cursor: not-allowed;" onclick="writeWifiToDevice()" disabled>2. 寫入設定</button>
+                </div>
             </div>
         </div>
     </div>
@@ -328,7 +339,7 @@
             <div style="margin-bottom:20px; font-size:0.85rem; color:#a0a0c0;">已綁定設備: <span id="menu-device-id" style="color:#00ff87;">未綁定</span></div>
             
             <button class="hero-btn" onclick="document.getElementById('user-menu-modal').classList.remove('active'); openProfilePage();"><i class="fa-solid fa-gear"></i> 個人帳號設定</button>
-            <button class="hero-btn" onclick="document.getElementById('user-menu-modal').classList.remove('active'); openDevicePage();"><i class="fa-solid fa-microchip"></i> 設備綁定管理</button>
+            <button class="hero-btn" onclick="document.getElementById('user-menu-modal').classList.remove('active'); openDevicePage();"><i class="fa-solid fa-microchip"></i> 設備與網路管理</button>
             <button class="hero-btn" style="background:rgba(255,51,102,0.1); border:1px solid #ff3366; color:#ff3366;" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> 登出目前帳號</button>
             <button style="width:100%; background:transparent; border:none; color:#a0a0c0; margin-top:15px; cursor:pointer;" onclick="document.getElementById('user-menu-modal').classList.remove('active')">關閉</button>
         </div>
@@ -407,6 +418,9 @@
         let drafts = JSON.parse(localStorage.getItem('beast_drafts') || '[]');
         let activeDraftId = null;
 
+        // 🌟 Web Serial USB 變數
+        let usbPort = null;
+
         document.addEventListener('DOMContentLoaded', () => {
             const token = getCookie('beast_token');
             const savedUser = getCookie('beast_user');
@@ -444,8 +458,6 @@
             mainMap.on('click', (e) => { currentGPS.lat=e.latlng.lat; currentGPS.lng=e.latlng.lng; updateMapMarker(); fetchNearbyStores(); });
 
             setInterval(pullIoTData, 1000);
-            
-            // 🌟 啟動背景雲端硬體草稿同步 (每 5 秒問一次伺服器有沒有按實體按鈕產生的草稿)
             setInterval(syncHardwareDrafts, 5000);
 
             if("geolocation" in navigator) {
@@ -462,11 +474,8 @@
             
             const img = document.getElementById('menu-avatar-img');
             const icon = document.getElementById('menu-avatar-icon');
-            if(currentUser.avatar_url) {
-                img.src = currentUser.avatar_url; img.style.display = 'block'; icon.style.display = 'none';
-            } else {
-                img.style.display = 'none'; icon.style.display = 'block';
-            }
+            if(currentUser.avatar_url) { img.src = currentUser.avatar_url; img.style.display = 'block'; icon.style.display = 'none'; } 
+            else { img.style.display = 'none'; icon.style.display = 'block'; }
         }
 
         function openProfilePage() {
@@ -511,9 +520,50 @@
                     currentUser.device_id = d.device_id;
                     setCookie('beast_user', encodeURIComponent(JSON.stringify(currentUser)), 7);
                     document.getElementById('menu-device-id').textContent = d.device_id;
-                    document.getElementById('page-device').classList.remove('active');
                 } else alert(d.message);
             } catch { alert('綁定連線失敗'); }
+        }
+
+        // 🌟 核心：Web Serial USB 寫入 Wi-Fi
+        async function connectUSB() {
+            if (!("serial" in navigator)) {
+                alert("很抱歉，您的瀏覽器不支援 Web Serial API (USB連線)。\n請使用電腦版的 Chrome 或 Edge 瀏覽器！");
+                return;
+            }
+            try {
+                usbPort = await navigator.serial.requestPort();
+                await usbPort.open({ baudRate: 115200 });
+                alert("✅ USB 設備連接成功！請輸入 Wi-Fi 帳號密碼並點擊寫入。");
+                
+                // 啟用寫入按鈕
+                const writeBtn = document.getElementById('btn-write-usb');
+                writeBtn.disabled = false;
+                writeBtn.style.background = 'var(--primary-gradient)';
+                writeBtn.style.cursor = 'pointer';
+                document.getElementById('btn-connect-usb').textContent = "已連接 USB";
+                
+            } catch (e) {
+                alert("USB 連接失敗: " + e.message);
+            }
+        }
+
+        async function writeWifiToDevice() {
+            if (!usbPort) return alert("請先點擊連接 USB！");
+            const ssid = document.getElementById("usb-ssid").value.trim();
+            const pass = document.getElementById("usb-pass").value;
+            
+            if (!ssid) return alert("請輸入手機熱點名稱 (SSID)！");
+            
+            try {
+                const encoder = new TextEncoder();
+                const writer = usbPort.writable.getWriter();
+                // 發送給 ESP32 的特定格式指令
+                await writer.write(encoder.encode(`SET_WIFI:${ssid},${pass}\n`));
+                writer.releaseLock();
+                alert("📡 Wi-Fi 設定已成功燒錄至設備！\nESP32 將於 2 秒後重啟並連接您的手機熱點。\n(您可以拔除 USB 線，改用行動電源供電了)");
+            } catch (e) {
+                alert("寫入失敗: " + e.message);
+            }
         }
 
         function updateMapMarker() {
@@ -544,7 +594,7 @@
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
                 cachedStoresGlobal = data; expandDrawerFull(false); 
-            } catch(e) { list.innerHTML = '<p style="text-align:center; color:#ff5858;">無法連線後端</p>'; }
+            } catch(e) {}
         }
 
         async function searchRestaurants() {
@@ -595,7 +645,6 @@
 
         function backToListPane() { document.getElementById('pane-detail').classList.remove('active'); document.getElementById('pane-list').classList.remove('hidden'); }
 
-        // 🌟 獲取專屬設備數據
         function pullIoTData() {
             const isSimMode = document.getElementById('sim-toggle').checked;
             const dot = document.getElementById('status-dot');
@@ -605,7 +654,7 @@
             if (!devId) {
                 currentTemp = 0; currentHumid = 0; currentNoise = 0;
                 dot.className = "status-dot pulsing"; dot.style.background = "#ff3366"; dot.style.boxShadow = "0 0 8px #ff3366";
-                txt.textContent = "未綁定 IoT 設備";
+                txt.textContent = "未綁定設備";
                 updateIoTUI(); return;
             }
 
@@ -624,7 +673,7 @@
                     } else {
                         currentTemp = 0; currentHumid = 0; currentNoise = 0;
                         dot.className = "status-dot pulsing"; dot.style.background = "#ff3366"; dot.style.boxShadow = "0 0 8px #ff3366";
-                        txt.textContent = `等待設備 ${devId} 連線...`;
+                        txt.textContent = `等待設備 ${devId} 雲端訊號...`;
                     }
                     updateIoTUI();
                     if (isRecording && !data.is_simulated) { tempArr.push(currentTemp); humidArr.push(currentHumid); noiseArr.push(currentNoise); }
@@ -638,7 +687,6 @@
             document.getElementById('iot-val-noise').textContent = currentNoise.toFixed(1);
         }
 
-        // 🌟 透過手機手動錄製 (事後發布版)
         function toggleRecording() {
             const fab = document.getElementById('fab-record'), icon = document.getElementById('record-icon'), tmr = document.getElementById('record-timer');
             if(!isRecording) {
@@ -658,7 +706,6 @@
             }
         }
 
-        // 🌟 自動去拉取 IoT 硬體上傳的物理草稿！
         function syncHardwareDrafts() {
             if(!currentUser || !currentUser.device_id) return;
             fetch(`${API_BASE}/api/user/hw-drafts`, { headers: { 'Authorization': `Bearer ${getCookie('beast_token')}` }})
@@ -669,7 +716,6 @@
                         localStorage.setItem('beast_drafts', JSON.stringify(drafts));
                         renderDraftsInIoTPanel();
                         
-                        // 讓小紅點發光提示使用者
                         const badge = document.getElementById('iot-draft-badge');
                         badge.classList.remove('hidden');
                         badge.classList.add('syncing');
