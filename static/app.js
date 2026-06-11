@@ -13,7 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const token = getCookie('beast_token');
     const savedUser = getCookie('beast_user');
     
-    // 進入 Admin 畫面必定要驗證身分
     if (token && savedUser && token !== "undefined") {
         const u = JSON.parse(decodeURIComponent(savedUser));
         if (u.role === 'admin' || u.role === 'owner') {
@@ -42,7 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     document.getElementById('logout-btn').addEventListener('click', () => { eraseCookie('beast_token'); eraseCookie('beast_user'); location.reload(); });
-    
     document.getElementById('show-team-dash-btn').addEventListener('click', () => { activeContainerBeforeTeam = 'dashboard-container'; document.getElementById('dashboard-container').classList.add('hidden'); document.getElementById('team-container').classList.remove('hidden'); clearInterval(latestPollInterval); });
     document.getElementById('team-back-btn').addEventListener('click', () => { document.getElementById('team-container').classList.add('hidden'); document.getElementById(activeContainerBeforeTeam).classList.remove('hidden'); startPolling(); });
 
@@ -54,22 +52,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function showDashboard() {
     document.getElementById('dashboard-container').classList.remove('hidden');
-    
-    // 設定徽章
     const badge = document.getElementById('admin-role-badge');
     badge.textContent = currentUser.role.toUpperCase();
     badge.className = `badge badge-${currentUser.role}`;
-
     startPolling(); 
 }
 
-// ==========================================
-// Tab 1: IoT 監控
-// ==========================================
 function switchAdminTab(tabId) {
     document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    
     document.querySelector(`.admin-tab[onclick="switchAdminTab('${tabId}')"]`).classList.add('active');
     document.getElementById(`tab-${tabId}`).classList.add('active');
 
@@ -117,9 +108,10 @@ async function fetchAdminRestaurants() {
                     <td style="color:#00f2fe; font-weight:bold;">${escapeHtml(s.name)}</td>
                     <td>${stars}</td>
                     <td>${s.record_count} 筆</td>
-                    <td>
+                    <td style="display:flex; gap:5px; padding:10px 0;">
                         <button class="btn btn-primary btn-sm" onclick="openEditRestModal(${s.id}, '${escapeHtml(s.name)}', '${escapeHtml(s.address)}', '${escapeHtml(s.business_hours)}')">編輯</button>
-                        <button class="btn btn-sm" style="background:rgba(255,255,255,0.1); border:1px solid #ccc; color:#fff;" onclick="viewRestRecords(${s.id}, '${escapeHtml(s.name)}')">檢視評價</button>
+                        <button class="btn btn-sm" style="background:rgba(255,255,255,0.1); border:1px solid #ccc; color:#fff;" onclick="viewRestRecords(${s.id}, '${escapeHtml(s.name)}')">檢視</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteRestaurant(${s.id}, '${escapeHtml(s.name)}')">刪除</button>
                     </td>
                 </tr>
             `;
@@ -148,6 +140,16 @@ async function saveRestEdit() {
         document.getElementById('modal-edit-rest').classList.remove('active');
         fetchAdminRestaurants();
     } catch(e) { alert("更新失敗"); }
+}
+
+async function deleteRestaurant(id, name) {
+    if(!confirm(`⚠️ 警告：確定要永久刪除地標「${name}」以及該地標底下的所有評價紀錄嗎？\n此操作無法復原！`)) return;
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/restaurants/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getCookie('beast_token')}` } });
+        const d = await res.json();
+        if(d.success) { alert('地標刪除成功！'); fetchAdminRestaurants(); } 
+        else { alert("刪除失敗"); }
+    } catch(e) { alert("連線異常，無法刪除"); }
 }
 
 async function viewRestRecords(rest_id, rest_name) {
@@ -182,7 +184,7 @@ async function deleteAnyRecord(record_id, rest_id, rest_name) {
     if(!confirm("確定要刪除這筆評價紀錄嗎？")) return;
     try {
         await fetch(`${API_BASE}/api/history/${record_id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getCookie('beast_token')}` } });
-        viewRestRecords(rest_id, rest_name); // 重新載入 Modal 內的表單
+        viewRestRecords(rest_id, rest_name); 
     } catch(e) {}
 }
 
@@ -200,9 +202,9 @@ async function fetchAdminUsers() {
             const roleBadge = `<span class="badge badge-${u.role}">${u.role.toUpperCase()}</span>`;
             const statusBadge = u.status === 'frozen' ? `<span class="badge badge-frozen">已凍結</span>` : `<span class="badge badge-user">正常</span>`;
             
-            // 防呆：不能凍結 Owner
-            const toggleFreezeBtn = u.role === 'owner' ? '' : 
-                `<button class="btn btn-sm ${u.status === 'frozen' ? 'btn-primary' : 'btn-danger'}" onclick="toggleUserStatus(${u.id}, '${u.status}')">${u.status === 'frozen' ? '解凍' : '凍結'}</button>`;
+            // 🌟 刪除按鈕加入！
+            const toggleFreezeBtn = u.role === 'owner' ? '' : `<button class="btn btn-sm ${u.status === 'frozen' ? 'btn-primary' : 'btn-warning'}" onclick="toggleUserStatus(${u.id}, '${u.status}')">${u.status === 'frozen' ? '解凍' : '凍結'}</button>`;
+            const deleteBtn = u.role === 'owner' ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">刪除</button>`;
             
             tbody.innerHTML += `
                 <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
@@ -210,9 +212,10 @@ async function fetchAdminUsers() {
                     <td style="color:#fff; font-weight:bold;">${escapeHtml(u.username)}</td>
                     <td>${roleBadge}</td>
                     <td>${statusBadge}</td>
-                    <td>
+                    <td style="display:flex; gap:5px; padding:10px 0;">
                         <button class="btn btn-sm" style="background:rgba(255,255,255,0.1); border:1px solid #ccc; color:#fff;" onclick="openEditUserModal(${u.id}, '${escapeHtml(u.username)}', '${u.role}')">編輯</button>
                         ${toggleFreezeBtn}
+                        ${deleteBtn}
                     </td>
                 </tr>
             `;
@@ -228,7 +231,6 @@ function openEditUserModal(id, name, role) {
     const roleSelect = document.getElementById('edit-user-role');
     roleSelect.value = role;
     
-    // 只有 owner 才能改別人的權限
     if(currentUser.role === 'owner') {
         document.getElementById('role-select-box').style.display = 'block';
     } else {
@@ -240,9 +242,7 @@ function openEditUserModal(id, name, role) {
 
 async function saveUserEdit() {
     const id = document.getElementById('edit-user-id').value;
-    const data = {
-        username: document.getElementById('edit-user-name').value.trim()
-    };
+    const data = { username: document.getElementById('edit-user-name').value.trim() };
     const pwd = document.getElementById('edit-user-pwd').value;
     if(pwd) data.password = pwd;
     if(currentUser.role === 'owner') data.role = document.getElementById('edit-user-role').value;
@@ -264,6 +264,19 @@ async function toggleUserStatus(id, currentStatus) {
         await fetch(`${API_BASE}/api/admin/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getCookie('beast_token')}` }, body: JSON.stringify({status: newStatus}) });
         fetchAdminUsers();
     } catch(e) { alert("更新狀態失敗"); }
+}
+
+// 🌟 會員永久刪除邏輯
+async function deleteUser(id, username) {
+    if(!confirm(`⚠️ 警告：確定要永久刪除會員「${username}」及其所有的感官評價紀錄嗎？\n此操作無法復原！`)) return;
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/users/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getCookie('beast_token')}` } });
+        const d = await res.json();
+        if(d.success) {
+            alert('會員刪除成功！');
+            fetchAdminUsers();
+        } else { alert(d.message || "刪除失敗"); }
+    } catch(e) { alert("連線異常，無法刪除"); }
 }
 
 function escapeHtml(u) { return String(u).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }

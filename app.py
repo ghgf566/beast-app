@@ -28,7 +28,7 @@ app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = 'beast_super_secret_key_114514' 
 CORS(app)
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_KR2v4NGQonrk@ep-shy-dust-ao2dp1xn-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://請換成你的_neon_連線字串_包含密碼@ep-xxx.aws.neon.tech/neondb?sslmode=require")
 UPSTASH_REDIS_URL = os.environ.get("REDIS_URL", "rediss://default:AaaWAAIgcDE3MzU1ZGUyYjE2NTE0NGZhODgwYmRkMDc2MjM3NDIwMw@internal-titmouse-42646.upstash.io:6379")
 
 try:
@@ -44,6 +44,10 @@ latest_data_lock = threading.RLock()
 current_com_port = "COM5"
 com_port_lock = threading.Lock()
 serial_running = True
+
+# 🌟 新增：萬一 Redis 不在，本機記憶體負責保存硬體傳來的草稿
+hw_drafts_memory = {}
+hw_drafts_lock = threading.Lock()
 
 def init_db():
     if "ep-xxx.aws.neon.tech" in DATABASE_URL: return
@@ -61,6 +65,8 @@ def init_db():
         try: cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
         except: pass
         try: cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''")
+        except: pass
+        try: cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT ''")
         except: pass
         
         try: cursor.execute("ALTER TABLE records ADD COLUMN IF NOT EXISTS review_text TEXT")
@@ -97,7 +103,7 @@ def token_required(f):
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
             conn = get_db_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            cursor.execute("SELECT id, username, role, status, avatar_url FROM users WHERE id = %s", (data['user_id'],))
+            cursor.execute("SELECT id, username, role, status, avatar_url, device_id FROM users WHERE id = %s", (data['user_id'],))
             user = cursor.fetchone()
             conn.close()
             
@@ -108,6 +114,7 @@ def token_required(f):
             safe_user = dict(user)
             safe_user['role'] = user.get('role') or 'user'
             safe_user['status'] = status
+            safe_user['device_id'] = user.get('device_id') or ''
             
         except Exception: return jsonify({'success': False, 'message': '憑證過期'}), 401
         return f(safe_user, *args, **kwargs)
@@ -117,8 +124,11 @@ def update_sensor_data(new_data):
     global latest_data
     with latest_data_lock:
         latest_data.update(new_data)
+        device_id = new_data.get("device_id", "BEAST-001")
         if r: 
-            try: r.set("beast:sensor:latest", json.dumps(latest_data), ex=10)
+            try: 
+                r.set("beast:sensor:latest", json.dumps(latest_data), ex=10)
+                r.set(f"beast:sensor:{device_id}", json.dumps(latest_data), ex=10)
             except: pass
 
 def serial_listener_thread():
@@ -139,7 +149,7 @@ def serial_listener_thread():
                     ser = serial.Serial(port, 115200, timeout=1)
                     update_sensor_data({"is_simulated": False, "status": f"已連線 ({port})"})
                 except:
-                    update_sensor_data({"is_simulated": True, "status": f"等待 IoT 設備連接...", "avg_noise_db": 0.0, "avg_temp_c": 0.0, "avg_humidity": 0.0})
+                    update_sensor_data({"is_simulated": True, "status": f"等待設備連接...", "avg_noise_db": 0.0, "avg_temp_c": 0.0, "avg_humidity": 0.0})
                     ser = None
             else:
                 update_sensor_data({"is_simulated": True, "status": "未安裝 pyserial", "avg_noise_db": 0.0, "avg_temp_c": 0.0, "avg_humidity": 0.0})
@@ -151,7 +161,36 @@ def serial_listener_thread():
                     if raw_line.startswith("{") and raw_line.endswith("}"):
                         try:
                             data = json.loads(raw_line)
-                            update_sensor_data({"avg_noise_db": data.get("avg_noise_db", 0.0), "avg_temp_c": data.get("avg_temp_c", 0.0), "avg_humidity": data.get("avg_humidity", 0.0), "is_simulated": False, "status": f"正在接收數據 ({port})"})
+                            device_id = data.get("device_id", "BEAST-001")
+                            
+                            # 🌟 攔截 IoT 設備傳來的「物理紀錄草稿」
+                            if data.get("action") == "save_draft":
+                                draft_payload = {
+                                    "id": int(time.time() * 1000),
+                                    "date": datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
+                                    "duration": data.get("duration_sec", 0),
+                                    "temp": data.get("avg_temp_c", 0.0),
+                                    "humid": data.get("avg_humidity", 0.0),
+                                    "noise": data.get("avg_noise_db", 0.0)
+                                }
+                                # 存入 Redis 佇列，或備用記憶體
+                                if r: 
+                                    r.lpush(f"beast:hw_drafts:{device_id}", json.dumps(draft_payload))
+                                else:
+                                    with hw_drafts_lock:
+                                        if device_id not in hw_drafts_memory: hw_drafts_memory[device_id] = []
+                                        hw_drafts_memory[device_id].append(draft_payload)
+                                continue # 這是草稿，不更新即時數值
+
+                            # 更新即時數據面板
+                            update_sensor_data({
+                                "avg_noise_db": data.get("avg_noise_db", 0.0), 
+                                "avg_temp_c": data.get("avg_temp_c", 0.0), 
+                                "avg_humidity": data.get("avg_humidity", 0.0), 
+                                "is_simulated": False, 
+                                "status": data.get("status", f"正在接收數據 ({port})"), 
+                                "device_id": device_id
+                            })
                         except: pass
             except:
                 ser = None
@@ -165,12 +204,12 @@ def api_register():
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
-        cursor.execute("INSERT INTO users (username, password_hash, role, status, avatar_url) VALUES (%s, %s, 'user', 'active', '') RETURNING id",
+        cursor.execute("INSERT INTO users (username, password_hash, role, status, avatar_url, device_id) VALUES (%s, %s, 'user', 'active', '', '') RETURNING id",
                        (data['username'], hash_password(data['password'])))
         user_id = cursor.fetchone()['id']
         conn.commit()
         token = jwt.encode({'user_id': user_id}, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({"success": True, "token": token, "user": {"id": user_id, "username": data['username'], "role": 'user', "avatar_url": ''}})
+        return jsonify({"success": True, "token": token, "user": {"id": user_id, "username": data['username'], "role": 'user', "avatar_url": '', "device_id": ''}})
     except psycopg2.IntegrityError:
         conn.rollback()
         return jsonify({"success": False, "message": "此帳號已被註冊"}), 400
@@ -188,7 +227,7 @@ def api_login():
         status = user.get('status') or 'active'
         if status == 'frozen': return jsonify({"success": False, "message": "帳號已遭凍結"}), 403
         token = jwt.encode({'user_id': user['id']}, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({"success": True, "token": token, "user": {"id": user['id'], "username": user['username'], "role": user.get('role') or 'user', "avatar_url": user.get('avatar_url') or ''}})
+        return jsonify({"success": True, "token": token, "user": {"id": user['id'], "username": user['username'], "role": user.get('role') or 'user', "avatar_url": user.get('avatar_url') or '', "device_id": user.get('device_id') or ''}})
     return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
 
 @app.route('/api/user/profile', methods=['PUT'])
@@ -207,14 +246,51 @@ def update_profile(current_user):
     except: return jsonify({"success": False, "message": "名稱重複或更新失敗"}), 400
     finally: conn.close()
 
+@app.route('/api/user/device', methods=['PUT'])
+@token_required
+def update_user_device(current_user):
+    device_id = request.json.get('device_id', '').strip()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE users SET device_id = %s WHERE id = %s", (device_id, current_user['id']))
+        conn.commit()
+        return jsonify({"success": True, "device_id": device_id, "message": "設備綁定成功！"})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+    finally: conn.close()
+
+# 🌟 全新 API：讓手機來把硬體幫忙錄好的草稿給領走
+@app.route('/api/user/hw-drafts', methods=['GET'])
+@token_required
+def sync_hw_drafts(current_user):
+    device_id = current_user.get('device_id')
+    if not device_id: return jsonify({"success": True, "drafts": []})
+    
+    drafts = []
+    if r:
+        # 把這個帳號的專屬草稿匣整個倒出來
+        while True:
+            item = r.rpop(f"beast:hw_drafts:{device_id}")
+            if not item: break
+            drafts.append(json.loads(item))
+    else:
+        with hw_drafts_lock:
+            if device_id in hw_drafts_memory:
+                drafts = hw_drafts_memory[device_id]
+                hw_drafts_memory[device_id] = []
+                
+    return jsonify({"success": True, "drafts": drafts})
+
 @app.route('/api/admin/users', methods=['GET'])
 @token_required
 def admin_get_users(current_user):
     if current_user['role'] not in ['admin', 'owner']: return jsonify({"success": False, "message": "權限不足"}), 403
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("SELECT id, username, role, status, avatar_url FROM users ORDER BY id ASC")
-    users = [{"id": r['id'], "username": r['username'], "role": r['role'] or 'user', "status": r['status'] or 'active'} for r in cursor.fetchall()]
+    cursor.execute("SELECT id, username, role, status, avatar_url, device_id FROM users ORDER BY id ASC")
+    users = [{"id": r['id'], "username": r['username'], "role": r['role'] or 'user', "status": r['status'] or 'active', "device_id": r['device_id'] or ''} for r in cursor.fetchall()]
     conn.close()
     return jsonify({"success": True, "users": users})
 
@@ -254,13 +330,11 @@ def admin_manage_user(current_user, user_id):
         conn.close()
         return jsonify({"success": True})
 
-# 🌟 修復核心：強制將 SQL 回傳的 Decimal 轉型為 Float
 @app.route('/api/admin/restaurants', methods=['GET'])
 @token_required
 def admin_get_restaurants(current_user):
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    # 加入 ::FLOAT 強制轉換型別，避免 jsonify 序列化崩潰
     query = """
         SELECT r.id, r.name, r.address, r.business_hours, 
                COUNT(rec.id) as record_count, COALESCE(AVG(rec.rating), 0)::FLOAT as avg_rating
@@ -269,13 +343,11 @@ def admin_get_restaurants(current_user):
         GROUP BY r.id ORDER BY r.id DESC
     """
     cursor.execute(query)
-    # 在 Python 端二次確保轉換為標準 float
     stores = []
     for row in cursor.fetchall():
         d = dict(row)
         d['avg_rating'] = float(d['avg_rating'])
         stores.append(d)
-        
     conn.close()
     return jsonify(stores)
 
@@ -313,6 +385,14 @@ def admin_get_rest_records(current_user, rest_id):
 
 @app.route('/api/latest', methods=['GET'])
 def api_latest():
+    device_id = request.args.get('device_id')
+    if device_id and r:
+        try:
+            cached = r.get(f"beast:sensor:{device_id}")
+            if cached: return jsonify(json.loads(cached))
+        except: pass
+        return jsonify({"status": f"等待設備 {device_id} 訊號...", "is_simulated": True, "avg_temp_c": 0, "avg_humidity": 0, "avg_noise_db": 0})
+
     if r:
         try:
             cached = r.get("beast:sensor:latest")
