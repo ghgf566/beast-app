@@ -17,7 +17,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import redis 
 import psycopg2
-import psycopg2.extras # 讓 Postgres 回傳字典格式的資料
+import psycopg2.extras
 
 try:
     import serial
@@ -28,67 +28,61 @@ app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = 'beast_super_secret_key_114514' 
 CORS(app)
 
-# ==========================================
-# 🌟 雲端資料庫設定 (Neon PostgreSQL)
-# ==========================================
-# 請將下方換成你的 Neon 連線網址 (若部署在 Render，可從環境變數讀取)
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_KR2v4NGQonrk@ep-shy-dust-ao2dp1xn.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require")
-
-# ==========================================
-# 特調紅茶快取 (Upstash Redis)
-# ==========================================
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://請換成你的_neon_連線字串_包含密碼@ep-xxx.aws.neon.tech/neondb?sslmode=require")
 UPSTASH_REDIS_URL = os.environ.get("REDIS_URL", "rediss://default:AaaWAAIgcDE3MzU1ZGUyYjE2NTE0NGZhODgwYmRkMDc2MjM3NDIwMw@internal-titmouse-42646.upstash.io:6379")
 
 try:
     r = redis.from_url(UPSTASH_REDIS_URL, decode_responses=True)
     r.ping()
-    print("✅ [特調紅茶快取] 成功連線至 Upstash Redis！")
-except Exception as e:
-    print(f"❌ [特調紅茶快取] 連線失敗。錯誤: {e}")
-    r = None
+except: r = None
 
 latest_data = {
     "avg_noise_db": 0.0, "avg_temp_c": 0.0, "avg_humidity": 0.0,
-    "is_simulated": True, "status": "未連接 (模擬數據模式)"
+    "is_simulated": True, "status": "等待感測器數據..."
 }
 latest_data_lock = threading.RLock() 
 current_com_port = "COM5"
 com_port_lock = threading.Lock()
 serial_running = True
 
-# ==========================================
-# 初始化雲端資料庫表結構 (PostgreSQL 語法)
-# ==========================================
 def init_db():
+    if "ep-xxx.aws.neon.tech" in DATABASE_URL: return
     try:
         conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = True
         cursor = conn.cursor()
         
-        # Postgres 使用 SERIAL 來處理自動遞增
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS records (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, record_name TEXT NOT NULL, restaurant_id INTEGER, avg_noise_db REAL, avg_temp_c REAL, avg_humidity REAL, duration_sec INTEGER, created_at TEXT NOT NULL, FOREIGN KEY (user_id) REFERENCES users (id))''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS restaurants (id SERIAL PRIMARY KEY, name TEXT NOT NULL, address TEXT, business_hours TEXT, photo_url TEXT, lat REAL NOT NULL, lng REAL NOT NULL)''')
         
-        # 寫入預設的王道地標 (使用 ON CONFLICT 防止重複寫入)
-        default_stores = [
-            (101, '麥當勞 (學餐)', 24.1495, 120.6835),
-            (102, '星巴克 (校門口)', 24.1505, 120.6845),
-            (103, '圖書館咖啡', 24.1485, 120.6825)
-        ]
+        try: cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'")
+        except: pass
+        try: cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
+        except: pass
+        try: cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''")
+        except: pass
+        
+        try: cursor.execute("ALTER TABLE records ADD COLUMN IF NOT EXISTS review_text TEXT")
+        except: pass
+        try: cursor.execute("ALTER TABLE records ADD COLUMN IF NOT EXISTS rating INTEGER")
+        except: pass
+        
+        cursor.execute("SELECT id FROM users WHERE username = 'owner'")
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO users (username, password_hash, role, status) VALUES (%s, %s, 'owner', 'active')", ('owner', hash_password('beast_owner')))
+        else:
+            cursor.execute("UPDATE users SET password_hash = %s, role = 'owner', status = 'active' WHERE username = 'owner'", (hash_password('beast_owner'),))
+        
+        default_stores = [(101, '麥當勞 (學餐)', 24.1495, 120.6835), (102, '星巴克 (校門口)', 24.1505, 120.6845), (103, '圖書館咖啡', 24.1485, 120.6825)]
         for store in default_stores:
             cursor.execute("INSERT INTO restaurants (id, name, lat, lng) VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING", store)
             
-        conn.commit()
         conn.close()
-        print("✅ [王道資料庫] 成功連線至 PostgreSQL！")
-    except Exception as e:
-        print(f"❌ [王道資料庫] PostgreSQL 連線或建表失敗: {e}")
+    except Exception as e: print(f"❌ 建表失敗: {e}")
 
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
-
-def hash_password(password):
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+def get_db_connection(): return psycopg2.connect(DATABASE_URL)
+def hash_password(password): return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
 def token_required(f):
     @wraps(f)
@@ -97,19 +91,35 @@ def token_required(f):
         if 'Authorization' in request.headers:
             parts = request.headers['Authorization'].split()
             if len(parts) == 2 and parts[0] == 'Bearer': token = parts[1]
-        if not token: return jsonify({'success': False, 'message': '未授權，缺少登入憑證'}), 401
+        if not token: return jsonify({'success': False, 'message': '未授權'}), 401
+        
         try:
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-            current_user_id = data['user_id']
-        except Exception: return jsonify({'success': False, 'message': '登入已過期或無效'}), 401
-        return f(current_user_id, *args, **kwargs)
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cursor.execute("SELECT id, username, role, status, avatar_url FROM users WHERE id = %s", (data['user_id'],))
+            user = cursor.fetchone()
+            conn.close()
+            
+            if not user: return jsonify({'success': False, 'message': '帳號不存在'}), 401
+            status = user.get('status') or 'active'
+            if status == 'frozen': return jsonify({'success': False, 'message': '此帳號已被凍結'}), 403
+            
+            safe_user = dict(user)
+            safe_user['role'] = user.get('role') or 'user'
+            safe_user['status'] = status
+            
+        except Exception: return jsonify({'success': False, 'message': '憑證過期'}), 401
+        return f(safe_user, *args, **kwargs)
     return decorated
 
 def update_sensor_data(new_data):
     global latest_data
     with latest_data_lock:
         latest_data.update(new_data)
-        if r: r.set("beast:sensor:latest", json.dumps(latest_data), ex=10)
+        if r: 
+            try: r.set("beast:sensor:latest", json.dumps(latest_data), ex=10)
+            except: pass
 
 def serial_listener_thread():
     global current_com_port, serial_running
@@ -129,10 +139,10 @@ def serial_listener_thread():
                     ser = serial.Serial(port, 115200, timeout=1)
                     update_sensor_data({"is_simulated": False, "status": f"已連線 ({port})"})
                 except:
-                    update_sensor_data({"is_simulated": True, "status": f"無法連接 {port}，模擬模式"})
+                    update_sensor_data({"is_simulated": True, "status": f"等待 IoT 設備連接...", "avg_noise_db": 0.0, "avg_temp_c": 0.0, "avg_humidity": 0.0})
                     ser = None
             else:
-                update_sensor_data({"is_simulated": True, "status": "未安裝 pyserial，模擬模式"})
+                update_sensor_data({"is_simulated": True, "status": "未安裝 pyserial", "avg_noise_db": 0.0, "avg_temp_c": 0.0, "avg_humidity": 0.0})
                 ser = None
         if ser and ser.is_open:
             try:
@@ -141,51 +151,26 @@ def serial_listener_thread():
                     if raw_line.startswith("{") and raw_line.endswith("}"):
                         try:
                             data = json.loads(raw_line)
-                            update_sensor_data({
-                                "avg_noise_db": data.get("avg_noise_db", 0.0),
-                                "avg_temp_c": data.get("avg_temp_c", 0.0),
-                                "avg_humidity": data.get("avg_humidity", 0.0),
-                                "is_simulated": False,
-                                "status": f"正在接收數據 ({port})"
-                            })
+                            update_sensor_data({"avg_noise_db": data.get("avg_noise_db", 0.0), "avg_temp_c": data.get("avg_temp_c", 0.0), "avg_humidity": data.get("avg_humidity", 0.0), "is_simulated": False, "status": f"正在接收數據 ({port})"})
                         except: pass
             except:
                 ser = None
-                update_sensor_data({"is_simulated": True, "status": "連接中斷，模擬模式"})
-        else:
-            time.sleep(2)
-            with latest_data_lock:
-                if latest_data["is_simulated"]:
-                    update_sensor_data({
-                        "avg_noise_db": round(random.uniform(50.0, 78.0), 1),
-                        "avg_temp_c": round(random.uniform(22.0, 28.0), 1),
-                        "avg_humidity": round(random.uniform(55.0, 75.0), 1)
-                    })
+                update_sensor_data({"is_simulated": True, "status": "連接中斷", "avg_noise_db": 0.0, "avg_temp_c": 0.0, "avg_humidity": 0.0})
+        else: time.sleep(2)
         time.sleep(0.1)
-
-# ==========================================
-# API 路由
-# ==========================================
-@app.route('/')
-def serve_index(): return send_from_directory(app.static_folder, 'index.html')
-
-@app.route('/<path:path>')
-def serve_static(path): return send_from_directory(app.static_folder, path)
 
 @app.route('/api/register', methods=['POST'])
 def api_register():
     data = request.json
-    username = data.get('username')
-    password = data.get('password')
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
-        # Postgres 使用 RETURNING id 來獲取剛新增的 ID
-        cursor.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s) RETURNING id",(username, hash_password(password)))
+        cursor.execute("INSERT INTO users (username, password_hash, role, status, avatar_url) VALUES (%s, %s, 'user', 'active', '') RETURNING id",
+                       (data['username'], hash_password(data['password'])))
         user_id = cursor.fetchone()['id']
         conn.commit()
-        token = jwt.encode({'user_id': user_id, 'exp': datetime.utcnow() + timedelta(days=7)}, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({"success": True, "message": "註冊成功！", "token": token, "user": {"id": user_id, "username": username}})
+        token = jwt.encode({'user_id': user_id}, app.config['SECRET_KEY'], algorithm="HS256")
+        return jsonify({"success": True, "token": token, "user": {"id": user_id, "username": data['username'], "role": 'user', "avatar_url": ''}})
     except psycopg2.IntegrityError:
         conn.rollback()
         return jsonify({"success": False, "message": "此帳號已被註冊"}), 400
@@ -194,123 +179,275 @@ def api_register():
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.json
-    username = data.get('username')
-    password = data.get('password')
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("SELECT * FROM users WHERE username = %s AND password_hash = %s", (username, hash_password(password)))
+    cursor.execute("SELECT * FROM users WHERE username = %s AND password_hash = %s", (data['username'], hash_password(data['password'])))
     user = cursor.fetchone()
     conn.close()
     if user:
-        token = jwt.encode({'user_id': user['id'], 'exp': datetime.utcnow() + timedelta(days=7)}, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({"success": True, "message": "登入成功！", "token": token, "user": {"id": user['id'], "username": user['username']}})
+        status = user.get('status') or 'active'
+        if status == 'frozen': return jsonify({"success": False, "message": "帳號已遭凍結"}), 403
+        token = jwt.encode({'user_id': user['id']}, app.config['SECRET_KEY'], algorithm="HS256")
+        return jsonify({"success": True, "token": token, "user": {"id": user['id'], "username": user['username'], "role": user.get('role') or 'user', "avatar_url": user.get('avatar_url') or ''}})
     return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
+
+@app.route('/api/user/profile', methods=['PUT'])
+@token_required
+def update_profile(current_user):
+    data = request.json
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if 'password' in data and data['password']:
+            cursor.execute("UPDATE users SET username = %s, avatar_url = %s, password_hash = %s WHERE id = %s", (data['username'], data.get('avatar_url', ''), hash_password(data['password']), current_user['id']))
+        else:
+            cursor.execute("UPDATE users SET username = %s, avatar_url = %s WHERE id = %s", (data['username'], data.get('avatar_url', ''), current_user['id']))
+        conn.commit()
+        return jsonify({"success": True, "message": "個人資料更新成功"})
+    except: return jsonify({"success": False, "message": "名稱重複或更新失敗"}), 400
+    finally: conn.close()
+
+@app.route('/api/admin/users', methods=['GET'])
+@token_required
+def admin_get_users(current_user):
+    if current_user['role'] not in ['admin', 'owner']: return jsonify({"success": False, "message": "權限不足"}), 403
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT id, username, role, status, avatar_url FROM users ORDER BY id ASC")
+    users = [{"id": r['id'], "username": r['username'], "role": r['role'] or 'user', "status": r['status'] or 'active'} for r in cursor.fetchall()]
+    conn.close()
+    return jsonify({"success": True, "users": users})
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT', 'DELETE'])
+@token_required
+def admin_manage_user(current_user, user_id):
+    if current_user['role'] not in ['admin', 'owner']: return jsonify({"success": False, "message": "權限不足"}), 403
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT role FROM users WHERE id = %s", (user_id,))
+    target_user = cursor.fetchone()
+    if current_user['role'] == 'admin' and (target_user['role'] in ['admin', 'owner']):
+        return jsonify({"success": False, "message": "無法修改同級或高層"}), 403
+
+    if request.method == 'DELETE':
+        cursor.execute("DELETE FROM records WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+        
+    elif request.method == 'PUT':
+        data = request.json
+        updates, params = [], []
+        if 'status' in data: updates.append("status = %s"); params.append(data['status'])
+        if 'role' in data and current_user['role'] == 'owner': updates.append("role = %s"); params.append(data['role'])
+        if 'username' in data: updates.append("username = %s"); params.append(data['username'])
+        if 'password' in data and data['password']: updates.append("password_hash = %s"); params.append(hash_password(data['password']))
+        if updates:
+            params.append(user_id)
+            try:
+                cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = %s", tuple(params))
+                conn.commit()
+            except:
+                conn.rollback()
+                return jsonify({"success": False, "message": "更新失敗"}), 400
+        conn.close()
+        return jsonify({"success": True})
+
+# 🌟 修復核心：強制將 SQL 回傳的 Decimal 轉型為 Float
+@app.route('/api/admin/restaurants', methods=['GET'])
+@token_required
+def admin_get_restaurants(current_user):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    # 加入 ::FLOAT 強制轉換型別，避免 jsonify 序列化崩潰
+    query = """
+        SELECT r.id, r.name, r.address, r.business_hours, 
+               COUNT(rec.id) as record_count, COALESCE(AVG(rec.rating), 0)::FLOAT as avg_rating
+        FROM restaurants r
+        LEFT JOIN records rec ON r.id = rec.restaurant_id
+        GROUP BY r.id ORDER BY r.id DESC
+    """
+    cursor.execute(query)
+    # 在 Python 端二次確保轉換為標準 float
+    stores = []
+    for row in cursor.fetchall():
+        d = dict(row)
+        d['avg_rating'] = float(d['avg_rating'])
+        stores.append(d)
+        
+    conn.close()
+    return jsonify(stores)
+
+@app.route('/api/admin/restaurants/<int:rest_id>', methods=['PUT', 'DELETE'])
+@token_required
+def admin_manage_restaurant(current_user, rest_id):
+    if current_user['role'] not in ['admin', 'owner']: return jsonify({"success": False}), 403
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if request.method == 'DELETE':
+        cursor.execute("DELETE FROM records WHERE restaurant_id = %s", (rest_id,))
+        cursor.execute("DELETE FROM restaurants WHERE id = %s", (rest_id,))
+        conn.commit()
+    else:
+        data = request.json
+        cursor.execute("UPDATE restaurants SET name=%s, address=%s, business_hours=%s WHERE id=%s", (data['name'], data.get('address',''), data.get('business_hours',''), rest_id))
+        conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/admin/restaurants/<int:rest_id>/records', methods=['GET'])
+@token_required
+def admin_get_rest_records(current_user, rest_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("""
+        SELECT r.*, u.username 
+        FROM records r 
+        LEFT JOIN users u ON r.user_id = u.id 
+        WHERE r.restaurant_id = %s ORDER BY r.created_at DESC
+    """, (rest_id,))
+    records = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({"success": True, "records": records})
 
 @app.route('/api/latest', methods=['GET'])
 def api_latest():
     if r:
-        cached = r.get("beast:sensor:latest")
-        if cached: return jsonify(json.loads(cached))
+        try:
+            cached = r.get("beast:sensor:latest")
+            if cached: return jsonify(json.loads(cached))
+        except: pass
     with latest_data_lock: return jsonify(latest_data)
 
 @app.route('/api/config', methods=['POST'])
 def api_config():
     global current_com_port
     with com_port_lock: current_com_port = request.json.get('com_port', 'COM5')
-    return jsonify({"success": True})
+    return jsonify({"success": True, "status": f"已成功切換通訊埠至 {current_com_port}"})
+
+def get_restaurant_details(stores):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    results = []
+    for s in stores:
+        cursor.execute("SELECT rating, review_text, avg_temp_c, avg_humidity, avg_noise_db FROM records WHERE restaurant_id = %s", (s['id'],))
+        records = cursor.fetchall()
+        avg_rating, review_count = 0.0, len(records)
+        sum_temp = sum_humid = sum_noise = 0
+        stars_count = {5:0, 4:0, 3:0, 2:0, 1:0}
+        all_reviews = []
+        if review_count > 0:
+            total_rating = 0
+            for rec in records:
+                rate = rec['rating'] if rec['rating'] is not None else 5
+                total_rating += rate; stars_count[rate] += 1
+                sum_temp += rec['avg_temp_c'] if rec['avg_temp_c'] is not None else 0
+                sum_humid += rec['avg_humidity'] if rec['avg_humidity'] is not None else 0
+                sum_noise += rec['avg_noise_db'] if rec['avg_noise_db'] is not None else 0
+                if rec['review_text']: all_reviews.append(rec['review_text'])
+            avg_rating = total_rating / review_count; sum_temp /= review_count; sum_humid /= review_count; sum_noise /= review_count
+        results.append({
+            "id": s['id'], "name": s['name'], "lat": s['lat'], "lng": s['lng'],
+            "address": s['address'] or '無詳細地址紀錄', "business_hours": s['business_hours'] or '未設定營業時間',
+            "avg_rating": round(avg_rating, 1), "review_count": review_count,
+            "env_temp": round(sum_temp, 1) if sum_temp > 0 else 25.0,
+            "env_humid": round(sum_humid, 1) if sum_humid > 0 else 60.0,
+            "env_noise": round(sum_noise, 1) if sum_noise > 0 else 55.0,
+            "stars_distribution": stars_count, "reviews": all_reviews[-5:]
+        })
+    conn.close()
+    return results
 
 @app.route('/api/nearby', methods=['GET'])
 @token_required
-def api_nearby(current_user_id):
+def api_nearby(current_user):
     try:
         lat, lng = float(request.args.get('lat', 0)), float(request.args.get('lng', 0))
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        # PostgreSQL 距離計算語法
-        query = "SELECT *, ((lat-%s)*(lat-%s) + (lng-%s)*(lng-%s)) AS dist FROM restaurants ORDER BY dist ASC LIMIT 10"
-        cursor.execute(query, (lat, lat, lng, lng))
+        cursor.execute("SELECT *, ((lat-%s)*(lat-%s) + (lng-%s)*(lng-%s)) AS dist FROM restaurants ORDER BY dist ASC LIMIT 10", (lat, lat, lng, lng))
         stores = cursor.fetchall()
-        results = [{"id": s['id'], "name": s['name']} for s in stores if s['dist'] < 0.0001]
         conn.close()
-        return jsonify(results)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify(get_restaurant_details(stores))
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@app.route('/api/search', methods=['GET'])
+@token_required
+def api_search(current_user):
+    try:
+        q = request.args.get('q', '')
+        lat, lng = float(request.args.get('lat', 0)), float(request.args.get('lng', 0))
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute("SELECT *, ((lat-%s)*(lat-%s) + (lng-%s)*(lng-%s)) AS dist FROM restaurants WHERE name ILIKE %s ORDER BY dist ASC LIMIT 10", (lat, lat, lng, lng, f'%{q}%'))
+        stores = cursor.fetchall()
+        conn.close()
+        return jsonify(get_restaurant_details(stores))
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
 @app.route('/api/add-restaurant', methods=['POST'])
 @token_required
-def add_restaurant(current_user_id):
-    try:
-        data = request.json
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute(
-            "INSERT INTO restaurants (name, address, business_hours, photo_url, lat, lng) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
-            (data['name'], data.get('address', ''), data.get('business_hours', ''), data.get('photo_url', ''), data['lat'], data['lng'])
-        )
-        new_id = cursor.fetchone()['id']
-        conn.commit()
-        conn.close()
-        return jsonify({"success": True, "restaurant_id": new_id})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+def add_restaurant(current_user):
+    data = request.json
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("INSERT INTO restaurants (name, address, business_hours, lat, lng) VALUES (%s, %s, %s, %s, %s) RETURNING id", (data['name'], data.get('address', ''), data.get('business_hours', ''), data['lat'], data['lng']))
+    new_id = cursor.fetchone()['id']
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "restaurant_id": new_id})
 
 @app.route('/api/save', methods=['POST'])
 @token_required
-def api_save(current_user_id):
+def api_save(current_user):
     data = request.json
-    record_name = data.get('record_name')
-    restaurant_id = data.get('restaurant_id')
-    
-    if not record_name or not restaurant_id:
-        return jsonify({"success": False, "message": "缺少紀錄名稱或店家 ID"}), 400
-        
-    noise = data.get('avg_noise_db', 0)
-    temp = data.get('avg_temp_c', 0)
-    humid = data.get('avg_humidity', 0)
-    duration = data.get('duration_sec', 0)
-        
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         cursor.execute(
-            """INSERT INTO records (user_id, record_name, restaurant_id, avg_noise_db, avg_temp_c, avg_humidity, duration_sec, created_at) 
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-            (current_user_id, record_name, restaurant_id, noise, temp, humid, duration, created_at)
+            """INSERT INTO records (user_id, record_name, restaurant_id, avg_noise_db, avg_temp_c, avg_humidity, duration_sec, review_text, rating, created_at) 
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (current_user['id'], data['record_name'], data['restaurant_id'], data.get('avg_noise_db', 0), data.get('avg_temp_c', 0), data.get('avg_humidity', 0), data.get('duration_sec', 0), data.get('review_text', ''), data.get('rating', 5), datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         )
         conn.commit()
         return jsonify({"success": True})
-    except Exception as e: 
+    except Exception as e:
         conn.rollback()
         return jsonify({"success": False, "message": str(e)}), 500
     finally: conn.close()
 
 @app.route('/api/history', methods=['GET'])
 @token_required
-def api_history(current_user_id):
+def api_history(current_user):
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("""
-        SELECT r.*, rest.name as rest_name 
-        FROM records r 
-        LEFT JOIN restaurants rest ON r.restaurant_id = rest.id 
-        WHERE r.user_id = %s ORDER BY r.created_at DESC
-    """, (current_user_id,))
+    cursor.execute("SELECT r.*, rest.name as rest_name FROM records r LEFT JOIN restaurants rest ON r.restaurant_id = rest.id WHERE r.user_id = %s ORDER BY r.created_at DESC", (current_user['id'],))
     records = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return jsonify({"success": True, "records": records})
 
 @app.route('/api/history/<int:record_id>', methods=['DELETE'])
 @token_required
-def api_delete_record(current_user_id, record_id):
+def api_delete_record(current_user, record_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM records WHERE id = %s AND user_id = %s", (record_id, current_user_id))
+    if current_user['role'] in ['admin', 'owner']:
+        cursor.execute("DELETE FROM records WHERE id = %s", (record_id,))
+    else:
+        cursor.execute("DELETE FROM records WHERE id = %s AND user_id = %s", (record_id, current_user['id']))
     conn.commit()
-    deleted = cursor.rowcount
     conn.close()
-    if deleted > 0: return jsonify({"success": True})
-    return jsonify({"success": False}), 404
+    return jsonify({"success": True})
+
+@app.route('/')
+def serve_user(): return send_from_directory(app.static_folder, 'user.html')
+
+@app.route('/admin')
+def serve_admin(): return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path): return send_from_directory(app.static_folder, path)
 
 if __name__ == '__main__':
     init_db()

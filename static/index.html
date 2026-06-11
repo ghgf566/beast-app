@@ -3,279 +3,211 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BEAST ESP32 感官數據監控中心</title>
-    <!-- Google Fonts -->
+    <title>BEAST Admin - 總部控制台</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+TC:wght@300;400;700&display=swap" rel="stylesheet">
-    <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- Leaflet.js 地圖套件 -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
     <link rel="stylesheet" href="style.css?v=2.0">
     <style>
         .dark-map-tiles { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
         .cyber-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: flex; justify-content: center; align-items: center; z-index: 9999; opacity: 0; pointer-events: none; transition: 0.3s; padding: 20px; }
         .cyber-modal.active { opacity: 1; pointer-events: auto; }
-        .cyber-modal-content { background: #0d0d1a; border: 1px solid #00f2fe; border-radius: 12px; padding: 25px; width: 100%; max-width: 450px; color: white; box-shadow: 0 0 30px rgba(0,242,254,0.2); max-height: 85vh; overflow-y: auto; }
+        .cyber-modal-content { background: #0d0d1a; border: 1px solid #00f2fe; border-radius: 12px; padding: 25px; width: 90%; max-width: 500px; max-height: 85vh; overflow-y: auto; color: white; }
+        .cyber-input, .cyber-select { width: 100%; padding: 12px; margin-bottom: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 6px; }
         
-        .cyber-input { width: 100%; padding: 12px; margin-bottom: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 6px; font-family: 'Outfit', 'Noto Sans TC'; outline: none; transition: 0.3s; }
-        .cyber-input:focus { border-color: #00f2fe; box-shadow: 0 0 10px rgba(0,242,254,0.3); }
-        
-        /* 檔案上傳按鈕美化 */
-        .file-upload-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
-        .file-upload-wrapper input[type=file] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; }
-        .btn-upload { background: rgba(255,255,255,0.05); border: 1px dashed #00f2fe; color: #00f2fe; padding: 10px; border-radius: 6px; text-align: center; width: 100%; display: block; transition: 0.3s; }
-        .btn-upload:hover { background: rgba(0, 242, 254, 0.1); }
-        
-        .radio-group label { display: block; padding: 12px; background: rgba(255,255,255,0.05); margin-bottom: 8px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; transition: 0.3s; }
-        .radio-group label:hover { background: rgba(255,255,255,0.1); }
-        .radio-group input[type="radio"] { margin-right: 10px; accent-color: #00f2fe; }
-        .radio-group label.selected { border-color: #00f2fe; background: rgba(0, 242, 254, 0.1); }
+        .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.1); transition: .4s; border-radius: 34px; border: 1px solid rgba(255,255,255,0.2); }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: #a0a0c0; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: rgba(0, 242, 254, 0.2); border-color: #00f2fe; }
+        input:checked + .slider:before { transform: translateX(18px); background-color: #00f2fe; box-shadow: 0 0 10px #00f2fe; }
 
-        .btn-cancel { background: transparent; color: #a0a0c0; border: 1px solid #a0a0c0; padding: 10px 20px; border-radius: 6px; cursor: pointer; transition: 0.3s; }
-        .btn-cancel:hover { background: rgba(255,255,255,0.1); }
+        /* Admin 專屬導覽列 */
+        .admin-nav { display: flex; gap: 15px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .admin-tab { background: transparent; border: none; color: #a0a0c0; font-size: 1.1rem; cursor: pointer; padding: 10px 15px; border-radius: 8px; transition: 0.3s; }
+        .admin-tab.active { background: rgba(0,242,254,0.1); color: #00f2fe; font-weight: bold; }
+        .admin-tab:hover { color: #fff; }
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: block; }
+        
+        /* 標籤小工具 */
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+        .badge-owner { background: rgba(240, 147, 251, 0.2); color: #f093fb; border: 1px solid #f093fb; }
+        .badge-admin { background: rgba(0, 242, 254, 0.2); color: #00f2fe; border: 1px solid #00f2fe; }
+        .badge-user { background: rgba(255, 255, 255, 0.1); color: #ccc; border: 1px solid #ccc; }
+        .badge-frozen { background: rgba(255, 51, 102, 0.2); color: #ff3366; border: 1px solid #ff3366; }
     </style>
 </head>
 <body>
     <div class="glass-bg"></div>
     <div class="glow-circles"><div class="circle circle-1"></div><div class="circle circle-2"></div><div class="circle circle-3"></div></div>
-    <div class="bg-decor bg-decor-left"><img src="img/image0__1_-removebg-preview.png" alt="Decor Left" onerror="this.style.display='none'"></div>
-    <div class="bg-decor bg-decor-right"><img src="img/image0__2_-removebg-preview.png" alt="Decor Right" onerror="this.style.display='none'"></div>
 
-    <!-- 登入與註冊區塊 -->
+    <!-- 登入區塊 -->
     <div id="auth-container" class="container">
         <div class="auth-card glass-panel">
-            <div class="auth-header">
-                <i class="fa-solid fa-microchip logo-icon"></i>
-                <h2>BEAST 監控系統</h2>
-                <p>請登入以查看即時感測數據與歷史紀錄</p>
-            </div>
+            <div class="auth-header"><i class="fa-solid fa-microchip logo-icon"></i><h2>BEAST 總部控制台</h2><p style="color:#ff3366; font-size:0.85rem;">⚠️ 僅限擁有管理權限之帳戶登入</p></div>
             <form id="login-form" class="auth-form">
-                <div class="input-group"><i class="fa-solid fa-user"></i><input type="text" id="login-username" placeholder="帳號 / 使用者名稱" required></div>
+                <div class="input-group"><i class="fa-solid fa-user"></i><input type="text" id="login-username" placeholder="管理員帳號 (預設: owner)" required></div>
                 <div class="input-group"><i class="fa-solid fa-lock"></i><input type="password" id="login-password" placeholder="密碼" required></div>
-                <button type="submit" class="btn btn-primary"><span>立即登入</span> <i class="fa-solid fa-arrow-right-to-bracket"></i></button>
-                <p class="auth-toggle">還沒有帳號嗎？ <a href="#" id="go-to-register">按此註冊</a></p>
+                <button type="submit" class="btn btn-primary">進入控制台</button>
             </form>
-            <form id="register-form" class="auth-form hidden">
-                <div class="input-group"><i class="fa-solid fa-user-plus"></i><input type="text" id="register-username" placeholder="建立帳號名稱" required></div>
-                <div class="input-group"><i class="fa-solid fa-lock"></i><input type="password" id="register-password" placeholder="建立密碼" required></div>
-                <div class="input-group"><i class="fa-solid fa-circle-check"></i><input type="password" id="register-confirm-password" placeholder="確認密碼" required></div>
-                <button type="submit" class="btn btn-accent"><span>註冊帳號</span> <i class="fa-solid fa-user-plus"></i></button>
-                <p class="auth-toggle">已經有帳號？ <a href="#" id="go-to-login">返回登入</a></p>
-            </form>
-            <div class="auth-divider" style="height: 1px; background: rgba(255,255,255,0.05); margin: 20px 0;"></div>
-            <p class="auth-toggle"><a href="#" id="show-team-auth-btn"><i class="fa-solid fa-users"></i> 瞭解我們：團隊介紹</a></p>
             <div id="auth-message" class="alert-message hidden"></div>
         </div>
     </div>
 
-    <!-- 主儀表板區塊 -->
-    <div id="dashboard-container" class="container hidden">
+    <!-- 管理儀表板 -->
+    <div id="dashboard-container" class="container hidden" style="max-width: 1200px;">
         <header class="dashboard-header glass-panel">
-            <div class="header-logo"><i class="fa-solid fa-chart-line-up"></i><span class="logo-text">BEAST <span class="highlight">IoT Dashboard</span></span></div>
+            <div class="header-logo"><span class="logo-text">BEAST <span class="highlight">Admin Panel</span></span></div>
             <div class="header-controls">
-                <div class="com-port-selector">
-                    <label for="com-port-input"><i class="fa-solid fa-circle-nodes"></i> COM Port:</label>
-                    <input type="text" id="com-port-input" value="COM5">
-                    <button id="update-port-btn" class="btn btn-icon"><i class="fa-solid fa-rotate"></i> 更新</button>
-                </div>
-                <button id="debug-btn" class="btn btn-icon" style="color: #ff9f43; border-color: rgba(255,159,67,0.3);"><i class="fa-solid fa-bug"></i> 偵錯</button>
-                <div class="user-info"><i class="fa-solid fa-circle-user"></i><span id="user-display-name">使用者</span></div>
+                <span id="admin-role-badge" class="badge" style="margin-right:15px;">角色</span>
                 <button id="show-team-dash-btn" class="btn btn-icon btn-sm" style="margin-right: 8px;"><i class="fa-solid fa-users"></i> 團隊介紹</button>
-                <button id="logout-btn" class="btn btn-danger btn-sm"><i class="fa-solid fa-power-off"></i> 登出</button>
+                <button id="logout-btn" class="btn btn-danger btn-sm">登出</button>
             </div>
         </header>
 
-        <main class="dashboard-main">
-            <!-- 狀態與錄製操作列 -->
-            <section class="status-bar-section glass-panel">
-                <div class="status-indicator">
-                    <span class="status-dot pulsing" id="status-dot"></span>
-                    <span class="status-text" id="connection-status">正在連線至後端...</span>
-                </div>
-                
-                <!-- 🌟 重新設計的極簡錄製按鈕區塊 -->
-                <div class="save-actions" style="display: flex; gap: 15px; align-items: center; justify-content: flex-end; flex: 1;">
-                    <span id="recording-timer" class="hidden" style="font-family: monospace; font-size: 1.5rem; font-weight: bold; color: #ff3366; text-shadow: 0 0 10px rgba(255,51,102,0.5);">00:00</span>
-                    <button id="toggle-record-btn" class="btn btn-primary" style="width: 220px; font-size: 1.05rem;">
-                        <i id="record-icon" class="fa-solid fa-circle-dot" style="color: #ff3366;"></i> 
-                        <span id="record-text">開始錄製數據</span>
-                    </button>
-                </div>
-            </section>
+        <div class="glass-panel" style="padding: 20px;">
+            <!-- 導覽列 -->
+            <div class="admin-nav">
+                <button class="admin-tab active" onclick="switchAdminTab('iot')"><i class="fa-solid fa-satellite-dish"></i> 設備監控</button>
+                <button class="admin-tab" onclick="switchAdminTab('restaurants')"><i class="fa-solid fa-map-location-dot"></i> 地標管理</button>
+                <button class="admin-tab" onclick="switchAdminTab('users')"><i class="fa-solid fa-users-gear"></i> 會員管理</button>
+            </div>
 
-            <!-- 數據卡片 -->
-            <div class="metrics-grid">
-                <div class="metric-card glass-panel" id="card-temp">
-                    <div class="card-icon temp-icon-bg"><i class="fa-solid fa-temperature-half"></i></div>
-                    <div class="card-info">
-                        <h3>即時溫度</h3>
-                        <div class="card-value-wrapper"><span class="card-value" id="val-temp">--.-</span><span class="card-unit">°C</span></div>
+            <!-- Tab 1: IoT 即時監控 -->
+            <div id="tab-iot" class="tab-content active">
+                <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+                    <div style="display:flex; align-items:center; gap:8px; background: rgba(255,255,255,0.05); padding: 5px 12px; border-radius: 20px;">
+                        <span style="font-size: 0.85rem; color: #a0a0c0;">強制開啟前端模擬 (Demo用)</span>
+                        <label class="switch"><input type="checkbox" id="admin-sim-toggle" checked><span class="slider"></span></label>
                     </div>
-                    <div class="card-progress"><div class="progress-bar temp-bar" id="progress-temp" style="width: 0%"></div></div>
+                    <div class="com-port-selector">
+                        <input type="text" id="com-port-input" value="COM5" style="width:70px;">
+                        <button id="update-port-btn" class="btn btn-icon">變更 Port</button>
+                    </div>
                 </div>
-                <div class="metric-card glass-panel" id="card-humid">
-                    <div class="card-icon humid-icon-bg"><i class="fa-solid fa-droplet"></i></div>
-                    <div class="card-info">
-                        <h3>即時濕度</h3>
-                        <div class="card-value-wrapper"><span class="card-value" id="val-humid">--.-</span><span class="card-unit">%</span></div>
-                    </div>
-                    <div class="card-progress"><div class="progress-bar humid-bar" id="progress-humid" style="width: 0%"></div></div>
-                </div>
-                <div class="metric-card glass-panel" id="card-noise">
-                    <div class="card-icon noise-icon-bg"><i class="fa-solid fa-volume-high"></i></div>
-                    <div class="card-info">
-                        <h3>即時噪音</h3>
-                        <div class="card-value-wrapper"><span class="card-value" id="val-noise">--.-</span><span class="card-unit">dB</span></div>
-                        <p class="card-desc" id="noise-desc">安全範圍: &lt; 70 dB</p>
-                    </div>
-                    <div class="card-progress"><div class="progress-bar noise-bar" id="progress-noise" style="width: 0%"></div></div>
-                </div>
-                <div class="metric-card glass-panel" id="card-meta">
-                    <div class="card-icon meta-icon-bg"><i class="fa-solid fa-location-crosshairs"></i></div>
-                    <div class="card-info">
-                        <h3 style="color: #00f2fe; margin-bottom: 5px;">目前座標狀態</h3>
-                        <p class="card-desc" id="val-gps-status" style="font-size: 0.9rem;">定位掃描中...</p>
-                    </div>
-                    <div class="card-progress"><div class="progress-bar meta-bar" style="width: 100%"></div></div>
+
+                <div class="metrics-grid">
+                    <div class="metric-card glass-panel" id="card-temp"><h3>即時溫度</h3><div class="card-value-wrapper"><span class="card-value" id="val-temp">--.-</span><span class="card-unit">°C</span></div></div>
+                    <div class="metric-card glass-panel" id="card-humid"><h3>即時濕度</h3><div class="card-value-wrapper"><span class="card-value" id="val-humid">--.-</span><span class="card-unit">%</span></div></div>
+                    <div class="metric-card glass-panel" id="card-noise"><h3>即時噪音</h3><div class="card-value-wrapper"><span class="card-value" id="val-noise">--.-</span><span class="card-unit">dB</span></div></div>
+                    <div class="metric-card glass-panel"><h3 style="color:#00f2fe;">狀態</h3><div class="card-value-wrapper"><span id="connection-status" style="font-size:1.2rem;">連線中</span></div></div>
                 </div>
             </div>
 
-            <!-- 地圖區塊 -->
-            <section class="glass-panel" style="margin-bottom: 30px; padding: 20px;">
-                <div class="section-title"><i class="fa-solid fa-map-location-dot"></i><h2>BEAST 感官雷達 (僅顯示當下位置)</h2></div>
-                <div id="beast-map" style="height: 250px; width: 100%; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);"></div>
-            </section>
-
-            <!-- 圖表與歷史 -->
-            <div class="details-section">
-                <div class="chart-container glass-panel">
-                    <div class="section-title"><i class="fa-solid fa-chart-line"></i><h2>歷史環境數據趨勢圖</h2></div>
-                    <div class="chart-wrapper"><canvas id="historyChart"></canvas></div>
+            <!-- Tab 2: 地標管理 (以店家為核心) -->
+            <div id="tab-restaurants" class="tab-content">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h3 style="margin:0; color:#00f2fe;">王道美食地標總覽</h3>
+                    <button class="btn btn-primary btn-sm" onclick="fetchAdminRestaurants()"><i class="fa-solid fa-rotate-right"></i> 重新載入</button>
                 </div>
-                <div class="table-container glass-panel">
-                    <div class="section-title"><i class="fa-solid fa-history"></i><h2>歷史儲存紀錄</h2></div>
-                    <div class="table-wrapper">
-                        <table id="history-table">
-                            <thead><tr><th>紀錄名稱</th><th>測量時間</th><th>鎖定地標</th><th>平均溫度</th><th>平均濕度</th><th>噪音大小</th><th>時長</th><th>操作</th></tr></thead>
-                            <tbody id="history-tbody"><tr><td colspan="8" class="text-center">尚無紀錄或載入中...</td></tr></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <!-- 團隊介紹區塊 (原封不動) -->
-    <div id="team-container" class="container hidden">
-        <header class="dashboard-header glass-panel">
-            <div class="header-logo"><i class="fa-solid fa-users" style="color: #00f2fe; margin-right: 5px;"></i><span class="logo-text">BEAST <span class="highlight">團隊介紹</span></span></div>
-            <button id="team-back-btn" class="btn btn-primary btn-sm"><i class="fa-solid fa-arrow-left"></i> 返回上一頁</button>
-        </header>
-
-        <main class="dashboard-main glass-panel" style="padding: 20px;">
-            <div class="team-grid">
-                <div class="team-card">
-                    <div class="team-member-info left-intro">
-                        <h4>隊長：洪忠育 / 專案統籌與資料庫 (DBA)</h4>
-                        <p>1. 制定系統規格與 API 協定標準。<br>2. 關聯式資料庫 (RDB) 的 Schema 設計與正規化。<br>3. 會員註冊、登入系統與 JWT 身分驗證實作。</p>
-                    </div>
-                    <div class="team-image-wrapper"><img src="img/team/image0-removebg-preview.png" alt="隊長 洪忠育" onerror="this.style.display='none'"></div>
-                    <div class="team-member-info right-intro">
-                        <h4>隊長：洪忠育 / 專案統籌與資料庫 (DBA)</h4>
-                        <p>1. 制定系統規格與 API 協定標準。<br>2. 關聯式資料庫 (RDB) 的 Schema 設計與正規化。<br>3. 會員註冊、登入系統與 JWT 身分驗證實作。</p>
-                    </div>
-                </div>
-                <div class="team-card">
-                    <div class="team-member-info left-intro">
-                        <h4>組員 1：陳昱廷 / AI 演算法與核心邏輯</h4>
-                        <p>1. 開發 BEAST 感官追蹤模組與「王道」加權演算法。<br>2. 撰寫 AI 推薦邏輯的 Python 腳本。<br>3. 處理評論資料的清洗與過濾機制。</p>
-                    </div>
-                    <div class="team-image-wrapper"><img src="img/team/image1-removebg-preview.png" alt="組員 1 陳昱廷" onerror="this.style.display='none'"></div>
-                    <div class="team-member-info right-intro">
-                        <h4>組員 1：陳昱廷 / AI 演算法與核心邏輯</h4>
-                        <p>1. 開發 BEAST 感官追蹤模組與「王道」加權演算法。<br>2. 撰寫 AI 推薦邏輯的 Python 腳本。<br>3. 處理評論資料的清洗與過濾機制。</p>
-                    </div>
-                </div>
-                <div class="team-card">
-                    <div class="team-member-info left-intro">
-                        <h4>組員 2：陳建均 / 系統優化與服務串接</h4>
-                        <p>1. 串接 Google Maps API 獲取餐廳經緯度。<br>2. 建置與優化「特調紅茶」Redis 快取系統。<br>3. 實作地理位置查詢 (LBS) 演算法計算使用者距離。</p>
-                    </div>
-                    <div class="team-image-wrapper"><img src="img/team/image2-removebg-preview.png" alt="組員 2 陳建均" onerror="this.style.display='none'"></div>
-                    <div class="team-member-info right-intro">
-                        <h4>組員 2：陳建均 / 系統優化與服務串接</h4>
-                        <p>1. 串接 Google Maps API 獲取餐廳經緯度。<br>2. 建置與優化「特調紅茶」Redis 快取系統。<br>3. 實作地理位置查詢 (LBS) 演算法計算使用者距離。</p>
-                    </div>
-                </div>
-                <div class="team-card">
-                    <div class="team-member-info left-intro">
-                        <h4>組員 3：王鈞翺 / 測試與部署 (DevOps)</h4>
-                        <p>1. 撰寫單元與壓力測試腳本。<br>2. 負責後端應用程式的 Docker 容器化打包。<br>3. 伺服器環境建置與自動化部署 (CI/CD) 流程設定。</p>
-                    </div>
-                    <div class="team-image-wrapper"><img src="img/team/image3-removebg-preview.png" alt="組員 3 王鈞翺" onerror="this.style.display='none'"></div>
-                    <div class="team-member-info right-intro">
-                        <h4>組員 3：王鈞翺 / 測試與部署 (DevOps)</h4>
-                        <p>1. 撰寫單元與壓力測試腳本。<br>2. 負責後端應用程式的 Docker 容器化打包。<br>3. 伺服器環境建置與自動化部署 (CI/CD) 流程設定。</p>
-                    </div>
-                </div>
-            </div>
-            <div class="team-footer-toggle-wrapper"><a href="#" id="toggle-footer-btn" class="toggle-footer-link"><i class="fa-solid fa-circle-info"></i> 關於我們</a></div>
-            <footer id="team-footer-section" class="team-footer hidden">
-                <div class="team-footer-content">
-                    <p class="team-quote">人类有三大欲望，食欲，性欲，睡眠欲，而在这三大欲望当中，因为食欲是满足人类生存需求的欲望，所以，满足食欲的行为，在这三者中，优先性是第一位的。如果能在进食的过程中，吃下了美味的食物，也能使人类无比愉快，而在现实生活中，存在着对于这种快感执着追求的人，我们通常把这种人称之为美食家，而本餐厅，则专门为那些厌倦世间常见美食的人，量体裁衣，提供符合他们身份的美食。</p>
-                    <div class="team-logo-wrapper"><img src="img/image (1).webp" alt="BEAST Footer Icon" class="team-footer-icon" onerror="this.style.display='none'"></div>
-                </div>
-            </footer>
-        </main>
-    </div>
-
-    <!-- 🌟 全新的資料歸檔與地標選擇 Modal -->
-    <div id="post-record-modal" class="cyber-modal">
-        <div class="cyber-modal-content">
-            <h3 style="border-bottom: 1px solid #00f2fe; padding-bottom: 10px; margin-bottom: 20px; color: #00f2fe;">
-                <i class="fa-solid fa-cloud-arrow-up"></i> 錄製完成：感官歸檔設定
-            </h3>
-            
-            <div style="display:flex; justify-content:space-between; background:rgba(255,255,255,0.05); padding:10px; border-radius:6px; margin-bottom:15px; font-size:0.9rem;">
-                <span>⏱️ 時長: <span id="modal-val-duration" style="color:#00ff87; font-weight:bold;">0</span>s</span>
-                <span>🌡️ <span id="modal-val-temp">0</span>°C</span>
-                <span>💧 <span id="modal-val-humid">0</span>%</span>
-                <span>🔊 <span id="modal-val-noise">0</span>dB</span>
-            </div>
-
-            <label style="color:var(--text-secondary); font-size:0.9rem;">1. 這筆紀錄的名稱 (必填)</label>
-            <input type="text" id="modal-record-name" class="cyber-input" placeholder="例如：期中測試-窗邊座位">
-
-            <label style="color:var(--text-secondary); font-size:0.9rem; margin-top:10px; display:block;">2. 📍 確認精確位置 <span id="modal-gps-info" style="font-size:0.75rem; color:#00f2fe;"></span></label>
-            
-            <!-- 單選按鈕清單 (由 JS 動態生成附近店家) -->
-            <div id="modal-nearby-list" class="radio-group" style="margin-top: 8px; max-height:150px; overflow-y:auto; padding-right:5px;">
-                <!-- 選項會塞在這裡 -->
-            </div>
-
-            <!-- 新增店家表單 (選擇「新增地標」時才會展開) -->
-            <div id="modal-new-rest-form" class="hidden" style="background: rgba(0,242,254,0.05); padding: 15px; border: 1px solid rgba(0,242,254,0.3); border-radius: 8px; margin-top: 15px;">
-                <h4 style="color: #00f2fe; margin-bottom: 10px; font-size:0.95rem;">➕ 創建新王道地標 (LBS建檔)</h4>
-                <input type="text" id="modal-new-name" class="cyber-input" placeholder="店家名稱 (必填)" style="margin-bottom:8px; padding:10px;">
-                <input type="text" id="modal-new-addr" class="cyber-input" placeholder="詳細地址 (選填)" style="margin-bottom:8px; padding:10px;">
-                <input type="text" id="modal-new-hours" class="cyber-input" placeholder="營業時間 (選填，例如 11:00-20:00)" style="margin-bottom:8px; padding:10px;">
-                
-                <div class="file-upload-wrapper">
-                    <span class="btn-upload"><i class="fa-solid fa-camera"></i> 現場照片上傳 (選填)</span>
-                    <input type="file" id="modal-new-photo" accept="image/*">
+                <div class="table-container">
+                    <table style="width:100%; text-align:left; border-collapse:collapse;">
+                        <thead>
+                            <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:#a0a0c0;">
+                                <th style="padding:10px;">ID</th><th>店家名稱</th><th>平均星等</th><th>感官紀錄數</th><th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-rest-tbody"></tbody>
+                    </table>
                 </div>
             </div>
 
-            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-                <button class="btn-cancel" onclick="closePostRecordModal()">放棄紀錄</button>
-                <button class="btn btn-primary" onclick="submitPostRecord()">確認歸檔並上傳</button>
+            <!-- Tab 3: 會員管理 -->
+            <div id="tab-users" class="tab-content">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h3 style="margin:0; color:#00f2fe;">系統會員清單</h3>
+                    <button class="btn btn-primary btn-sm" onclick="fetchAdminUsers()"><i class="fa-solid fa-rotate-right"></i> 重新載入</button>
+                </div>
+                <div class="table-container">
+                    <table style="width:100%; text-align:left; border-collapse:collapse;">
+                        <thead>
+                            <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:#a0a0c0;">
+                                <th style="padding:10px;">ID</th><th>使用者名稱</th><th>權限等級</th><th>狀態</th><th>管理操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-user-tbody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
+    </div>
+
+    <!-- 🌟 Modal: 編輯店家資訊 -->
+    <div id="modal-edit-rest" class="cyber-modal">
+        <div class="cyber-modal-content">
+            <h3 style="color:#00f2fe; margin-top:0;">✏️ 編輯地標資訊</h3>
+            <input type="hidden" id="edit-rest-id">
+            <label style="color:#a0a0c0; font-size:0.85rem;">店家名稱</label>
+            <input type="text" id="edit-rest-name" class="cyber-input">
+            <label style="color:#a0a0c0; font-size:0.85rem;">詳細地址</label>
+            <input type="text" id="edit-rest-addr" class="cyber-input">
+            <label style="color:#a0a0c0; font-size:0.85rem;">營業時間</label>
+            <input type="text" id="edit-rest-hours" class="cyber-input">
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <button class="btn-cancel" style="flex:1;" onclick="document.getElementById('modal-edit-rest').classList.remove('active')">取消</button>
+                <button class="btn btn-primary" style="flex:1;" onclick="saveRestEdit()">儲存變更</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🌟 Modal: 檢視店家之所有評價紀錄 -->
+    <div id="modal-view-records" class="cyber-modal">
+        <div class="cyber-modal-content" style="max-width: 700px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,242,254,0.3); padding-bottom:10px; margin-bottom:15px;">
+                <h3 id="view-records-title" style="color:#00f2fe; margin:0;">載入中...</h3>
+                <button class="btn btn-icon btn-sm" onclick="document.getElementById('modal-view-records').classList.remove('active')">關閉</button>
+            </div>
+            <div style="max-height: 50vh; overflow-y: auto;">
+                <table style="width:100%; text-align:left; border-collapse:collapse; font-size:0.9rem;">
+                    <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:#a0a0c0;"><th style="padding:8px;">時間</th><th>評分</th><th>紀錄者</th><th>評論內容</th><th>操作</th></tr></thead>
+                    <tbody id="view-records-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🌟 Modal: 編輯會員權限 -->
+    <div id="modal-edit-user" class="cyber-modal">
+        <div class="cyber-modal-content">
+            <h3 style="color:#00f2fe; margin-top:0;">👤 編輯會員</h3>
+            <input type="hidden" id="edit-user-id">
+            <label style="color:#a0a0c0; font-size:0.85rem;">變更名稱</label>
+            <input type="text" id="edit-user-name" class="cyber-input">
+            <label style="color:#a0a0c0; font-size:0.85rem;">重設密碼 (留空則不變更)</label>
+            <input type="password" id="edit-user-pwd" class="cyber-input" placeholder="輸入新密碼">
+            
+            <div id="role-select-box" style="margin-bottom:10px;">
+                <label style="color:#a0a0c0; font-size:0.85rem;">設定權限 (僅 Owner 可操作)</label>
+                <select id="edit-user-role" class="cyber-select">
+                    <option value="user">一般會員 (User)</option>
+                    <option value="admin">管理員 (Admin)</option>
+                    <option value="owner">總負責人 (Owner)</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:15px;">
+                <button class="btn-cancel" style="flex:1;" onclick="document.getElementById('modal-edit-user').classList.remove('active')">取消</button>
+                <button class="btn btn-primary" style="flex:1;" onclick="saveUserEdit()">儲存設定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 團隊介紹 (保留) -->
+    <div id="team-container" class="container hidden">
+        <header class="dashboard-header glass-panel">
+            <div class="header-logo"><span class="logo-text">BEAST <span class="highlight">團隊介紹</span></span></div>
+            <button id="team-back-btn" class="btn btn-primary btn-sm">返回控制台</button>
+        </header>
+        <main class="dashboard-main glass-panel" style="padding: 20px;">
+            <div class="team-grid">
+                <div class="team-card"><div class="team-member-info left-intro"><h4>隊長：洪忠育</h4></div><div class="team-image-wrapper"><img src="img/team/image0-removebg-preview.png" alt="洪忠育" onerror="this.style.display='none'"></div></div>
+                <div class="team-card"><div class="team-member-info left-intro"><h4>組員：陳昱廷</h4></div><div class="team-image-wrapper"><img src="img/team/image1-removebg-preview.png" alt="陳昱廷" onerror="this.style.display='none'"></div></div>
+                <div class="team-card"><div class="team-member-info left-intro"><h4>組員：陳建均</h4></div><div class="team-image-wrapper"><img src="img/team/image2-removebg-preview.png" alt="陳建均" onerror="this.style.display='none'"></div></div>
+                <div class="team-card"><div class="team-member-info left-intro"><h4>組員：王鈞翺</h4></div><div class="team-image-wrapper"><img src="img/team/image3-removebg-preview.png" alt="王鈞翺" onerror="this.style.display='none'"></div></div>
+            </div>
+        </main>
     </div>
 
     <script src="app.js"></script>
