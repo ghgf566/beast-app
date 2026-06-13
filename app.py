@@ -94,29 +94,49 @@ def token_required(f):
     def decorated(*args, **kwargs):
         token = None
         if 'Authorization' in request.headers:
-            parts = request.headers['Authorization'].split()
-            if len(parts) == 2 and parts[0] == 'Bearer': token = parts[1]
-        if not token: return jsonify({'success': False, 'message': '未授權'}), 401
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(" ")[1]
+        
+        if not token:
+            return jsonify({'success': False, 'message': '找不到驗證 Token'}), 401
         
         try:
+            # 🌟 核心優化：優先從 Redis 讀取用戶快取資訊
+            redis_user = None
+            if r:
+                try: redis_user = r.get(f"auth:token:{token}")
+                except: pass
+
+            if redis_user:
+                current_user = json.loads(redis_user)
+                return f(current_user, *args, **kwargs)
+            
+            # 如果 Redis 沒抓到，才解密 JWT 並查資料庫
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+            
             conn = get_db_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            cursor.execute("SELECT id, username, role, status, avatar_url, device_id FROM users WHERE id = %s", (data['user_id'],))
-            user = cursor.fetchone()
+            cursor.execute("SELECT id, username, role, device_id, avatar_url, status FROM users WHERE id = %s", (data['user_id'],))
+            user_row = cursor.fetchone()
             conn.close()
             
-            if not user: return jsonify({'success': False, 'message': '帳號不存在'}), 401
-            status = user.get('status') or 'active'
-            if status == 'frozen': return jsonify({'success': False, 'message': '此帳號已被凍結'}), 403
+            if not user_row or user_row['status'] == 'frozen':
+                return jsonify({'success': False, 'message': '帳號無效或已被凍結'}), 401
             
-            safe_user = dict(user)
-            safe_user['role'] = user.get('role') or 'user'
-            safe_user['status'] = status
-            safe_user['device_id'] = user.get('device_id') or ''
+            current_user = dict(user_row)
             
-        except Exception: return jsonify({'success': False, 'message': '憑證過期'}), 401
-        return f(safe_user, *args, **kwargs)
+            # 寫回 Redis 快取
+            if r:
+                try: r.setex(f"auth:token:{token}", 604800, json.dumps(current_user, default=str))
+                except: pass
+            
+        except jwt.ExpiredSignatureError:
+            return jsonify({'success': False, 'message': 'Token 已過期'}), 401
+        except Exception as e:
+            return jsonify({'success': False, 'message': 'Token 驗證失敗'}), 401
+            
+        return f(current_user, *args, **kwargs)
     return decorated
 
 def update_sensor_data(new_data):
@@ -132,7 +152,6 @@ def update_sensor_data(new_data):
 
 def serial_listener_thread():
     global current_com_port, serial_running
-    # 如果是在 Render 環境中執行，就不要啟動本地序列埠監聽 (會報錯)
     if os.environ.get("RENDER") == "true" or os.environ.get("PORT"):
         print("☁️ [環境提示] 正在雲端執行，停止本機序列埠監聽。請使用 gateway.py 傳送資料。")
         return
@@ -187,13 +206,11 @@ def serial_listener_thread():
         else: time.sleep(2)
         time.sleep(0.1)
 
-# 🌟 全新：IoT 雲端閘道器 Webhook (讓你的筆電傳送資料過來)
 @app.route('/api/iot/webhook', methods=['POST'])
 def api_iot_webhook():
     data = request.json
     device_id = data.get("device_id", "BEAST-001")
     
-    # 如果是硬體傳來的草稿
     if data.get("action") == "save_draft":
         draft_payload = {
             "id": int(time.time() * 1000), "date": datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
@@ -207,7 +224,6 @@ def api_iot_webhook():
                 hw_drafts_memory[device_id].append(draft_payload)
         return jsonify({"success": True, "message": "Draft saved via Webhook"})
         
-    # 如果是即時動態數據
     else:
         update_sensor_data({
             "avg_noise_db": data.get("avg_noise_db", 0.0),
@@ -236,51 +252,117 @@ def api_register():
         return jsonify({"success": False, "message": "此帳號已被註冊"}), 400
     finally: conn.close()
 
+
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    
+    if not username or not password:
+        return jsonify({"success": False, "message": "請提供帳號與密碼"}), 400
+    
+    # 🌟 補回原本被省略的資料庫驗證代碼
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("SELECT * FROM users WHERE username = %s AND password_hash = %s", (data['username'], hash_password(data['password'])))
-    user = cursor.fetchone()
+    cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+    user_row = cursor.fetchone()
     conn.close()
-    if user:
-        status = user.get('status') or 'active'
-        if status == 'frozen': return jsonify({"success": False, "message": "帳號已遭凍結"}), 403
-        token = jwt.encode({'user_id': user['id']}, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({"success": True, "token": token, "user": {"id": user['id'], "username": user['username'], "role": user.get('role') or 'user', "avatar_url": user.get('avatar_url') or '', "device_id": user.get('device_id') or ''}})
-    return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
+
+    if not user_row or user_row['password_hash'] != hash_password(password):
+        return jsonify({"success": False, "message": "帳號或密碼錯誤"}), 401
+        
+    if user_row['status'] == 'frozen':
+        return jsonify({"success": False, "message": "帳號已被凍結，請聯繫管理員"}), 403
+    
+    token = jwt.encode({
+        'user_id': user_row['id'],
+        'exp': datetime.utcnow() + timedelta(days=7)
+    }, app.config['SECRET_KEY'], algorithm="HS256")
+    
+    user_data = {
+        "id": user_row['id'],
+        "username": user_row['username'],
+        "role": user_row['role'],
+        "device_id": user_row['device_id'] or '',
+        "avatar_url": user_row['avatar_url'] or ''
+    }
+    
+    # 🌟 寫入 Redis 快取
+    if r:
+        try:
+            r.setex(f"auth:token:{token}", 604800, json.dumps(user_data, default=str))
+            r.set(f"user:active_token:{user_row['id']}", token)
+        except: pass
+    
+    return jsonify({
+        "success": True,
+        "token": token,
+        "user": user_data
+    })
+
 
 @app.route('/api/user/profile', methods=['PUT'])
 @token_required
-def update_profile(current_user):
+def api_update_profile(current_user):
     data = request.json
+    new_username = data.get('username', current_user['username'])
+    new_avatar = data.get('avatar_url', current_user['avatar_url'])
+    new_password = data.get('password')
+    
     conn = get_db_connection()
     cursor = conn.cursor()
-    try:
-        if 'password' in data and data['password']:
-            cursor.execute("UPDATE users SET username = %s, avatar_url = %s, password_hash = %s WHERE id = %s", (data['username'], data.get('avatar_url', ''), hash_password(data['password']), current_user['id']))
-        else:
-            cursor.execute("UPDATE users SET username = %s, avatar_url = %s WHERE id = %s", (data['username'], data.get('avatar_url', ''), current_user['id']))
-        conn.commit()
-        return jsonify({"success": True, "message": "個人資料更新成功"})
-    except: return jsonify({"success": False, "message": "名稱重複或更新失敗"}), 400
-    finally: conn.close()
+    
+    if new_password:
+        hashed_password = hashlib.sha256(new_password.encode()).hexdigest()
+        cursor.execute("UPDATE users SET username = %s, avatar_url = %s, password = %s WHERE id = %s", 
+                       (new_username, new_avatar, hashed_password, current_user['id']))
+    else:
+        cursor.execute("UPDATE users SET username = %s, avatar_url = %s WHERE id = %s", 
+                       (new_username, new_avatar, current_user['id']))
+    conn.commit()
+    conn.close()
+    
+    # 同步更新快取
+    current_user['username'] = new_username
+    current_user['avatar_url'] = new_avatar
+    
+    if r:
+        try:
+            token = r.get(f"user:active_token:{current_user['id']}")
+            if token: r.setex(f"auth:token:{token}", 604800, json.dumps(current_user, default=str))
+        except: pass
+        
+    return jsonify({"success": True, "user": current_user})
 
+
+# 🌟 刪除重複的路由，只保留這一個負責設備綁定的版本
 @app.route('/api/user/device', methods=['PUT'])
 @token_required
-def update_user_device(current_user):
-    device_id = request.json.get('device_id', '').strip()
+def api_update_device(current_user):
+    data = request.json
+    device_id = data.get('device_id')
+    
+    if not device_id:
+        return jsonify({"success": False, "message": "設備識別碼不可為空"}), 400
+        
     conn = get_db_connection()
     cursor = conn.cursor()
-    try:
-        cursor.execute("UPDATE users SET device_id = %s WHERE id = %s", (device_id, current_user['id']))
-        conn.commit()
-        return jsonify({"success": True, "device_id": device_id, "message": "設備綁定成功！"})
-    except Exception as e:
-        conn.rollback()
-        return jsonify({"success": False, "message": str(e)}), 500
-    finally: conn.close()
+    cursor.execute("UPDATE users SET device_id = %s WHERE id = %s", (device_id, current_user['id']))
+    conn.commit()
+    conn.close()
+    
+    # 同步更新快取
+    current_user['device_id'] = device_id
+    
+    if r:
+        try:
+            token = r.get(f"user:active_token:{current_user['id']}")
+            if token: r.setex(f"auth:token:{token}", 604800, json.dumps(current_user, default=str))
+        except: pass
+        
+    return jsonify({"success": True, "device_id": device_id})
+
 
 @app.route('/api/user/hw-drafts', methods=['GET'])
 @token_required
@@ -289,10 +371,12 @@ def sync_hw_drafts(current_user):
     if not device_id: return jsonify({"success": True, "drafts": []})
     drafts = []
     if r:
-        while True:
-            item = r.rpop(f"beast:hw_drafts:{device_id}")
-            if not item: break
-            drafts.append(json.loads(item))
+        try:
+            while True:
+                item = r.rpop(f"beast:hw_drafts:{device_id}")
+                if not item: break
+                drafts.append(json.loads(item))
+        except: pass
     else:
         with hw_drafts_lock:
             if device_id in hw_drafts_memory:
@@ -344,6 +428,14 @@ def admin_manage_user(current_user, user_id):
                 conn.rollback()
                 return jsonify({"success": False, "message": "更新失敗"}), 400
         conn.close()
+        
+        # 如果管理員修改了用戶，直接清除該用戶快取強制重登
+        if r:
+            try:
+                token = r.get(f"user:active_token:{user_id}")
+                if token: r.delete(f"auth:token:{token}")
+            except: pass
+            
         return jsonify({"success": True})
 
 @app.route('/api/admin/restaurants', methods=['GET'])
