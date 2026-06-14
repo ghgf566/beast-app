@@ -605,8 +605,10 @@ def get_restaurant_details(stores):
         records = cursor.fetchall()
         avg_rating, review_count = 0.0, len(records)
         sum_temp = sum_humid = sum_noise = 0
+        sum_ai_weight = 0.0  # 🌟 累加 AI 權重
         stars_count = {5:0, 4:0, 3:0, 2:0, 1:0}
         all_reviews = []
+        
         if review_count > 0:
             total_rating = 0
             for rec in records:
@@ -616,16 +618,48 @@ def get_restaurant_details(stores):
                 sum_humid += rec['avg_humidity'] if rec['avg_humidity'] is not None else 0
                 sum_noise += rec['avg_noise_db'] if rec['avg_noise_db'] is not None else 0
                 
+                # 🌟 取得單筆 AI 權重 (若無紀錄預設為 50.0 分)
+                weight = rec['sensory_weight'] if rec['sensory_weight'] is not None else 50.0
+                sum_ai_weight += weight
+                
                 if rec['review_text']: 
                     all_reviews.append({
                         "text": rec['review_text'], 
                         "ai_summary": rec['ai_summary'] if rec['ai_summary'] else "",
-                        "weight": rec['sensory_weight'] if rec['sensory_weight'] else 50.0
+                        "weight": weight
                     })
                     
-            avg_rating = total_rating / review_count; sum_temp /= review_count; sum_humid /= review_count; sum_noise /= review_count
-        results.append({"id": s['id'], "name": s['name'], "lat": s['lat'], "lng": s['lng'], "address": s['address'] or '無詳細地址紀錄', "business_hours": s['business_hours'] or '未設定營業時間', "avg_rating": round(avg_rating, 1), "review_count": review_count, "env_temp": round(sum_temp, 1) if sum_temp > 0 else 25.0, "env_humid": round(sum_humid, 1) if sum_humid > 0 else 60.0, "env_noise": round(sum_noise, 1) if sum_noise > 0 else 55.0, "stars_distribution": stars_count, "reviews": all_reviews[-5:]})
+            avg_rating = total_rating / review_count
+            sum_temp /= review_count; sum_humid /= review_count; sum_noise /= review_count
+            avg_ai_weight = sum_ai_weight / review_count
+        else:
+            avg_ai_weight = 50.0 # 沒評價的店家預設給 50 分基本分
+            
+        # 🌟 讀取 SQL 計算好的真實距離 (公尺)
+        dist_m = s['dist'] if 'dist' in s and s['dist'] is not None else 0
+        
+        # 🌟 核心演算法：AI 推薦分數 = (AI 感官平均分) - (距離懲罰: 每100公尺扣1分)
+        recom_score = avg_ai_weight - (dist_m / 100.0)
+            
+        results.append({
+            "id": s['id'], "name": s['name'], "lat": s['lat'], "lng": s['lng'], 
+            "address": s['address'] or '無詳細地址紀錄', 
+            "business_hours": s['business_hours'] or '未設定營業時間', 
+            "avg_rating": round(avg_rating, 1), 
+            "review_count": review_count, 
+            "env_temp": round(sum_temp, 1) if sum_temp > 0 else 25.0, 
+            "env_humid": round(sum_humid, 1) if sum_humid > 0 else 60.0, 
+            "env_noise": round(sum_noise, 1) if sum_noise > 0 else 55.0, 
+            "stars_distribution": stars_count, 
+            "reviews": all_reviews[-5:],
+            "dist_m": round(dist_m),  # 傳給前端顯示公尺數
+            "avg_ai_weight": round(avg_ai_weight, 1),
+            "recom_score": round(recom_score, 1) # 傳給前端顯示王道推薦度
+        })
     conn.close()
+    
+    # 🌟 在後端直接依照「綜合推薦分數」降冪排序 (最高分排最前面)
+    results = sorted(results, key=lambda x: x['recom_score'], reverse=True)
     return results
 
 @app.route('/api/nearby', methods=['GET'])
@@ -635,7 +669,15 @@ def api_nearby(current_user):
         lat, lng = float(request.args.get('lat', 0)), float(request.args.get('lng', 0))
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute("SELECT *, ((lat-%s)*(lat-%s) + (lng-%s)*(lng-%s)) AS dist FROM restaurants ORDER BY dist ASC LIMIT 10", (lat, lat, lng, lng))
+        
+        # 🌟 真實 LBS 地理距離公式 (Haversine Formula) - 計算地球曲率，單位：公尺
+        haversine_sql = """
+            SELECT *, 
+            ( 6371000 * acos( least(1.0, cos( radians(%s) ) * cos( radians(lat) ) * cos( radians(lng) - radians(%s) ) + sin( radians(%s) ) * sin( radians(lat) ) ) ) ) AS dist 
+            FROM restaurants 
+            ORDER BY dist ASC LIMIT 20
+        """
+        cursor.execute(haversine_sql, (lat, lng, lat))
         stores = cursor.fetchall()
         conn.close()
         return jsonify(get_restaurant_details(stores))
@@ -649,7 +691,16 @@ def api_search(current_user):
         lat, lng = float(request.args.get('lat', 0)), float(request.args.get('lng', 0))
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute("SELECT *, ((lat-%s)*(lat-%s) + (lng-%s)*(lng-%s)) AS dist FROM restaurants WHERE name ILIKE %s ORDER BY dist ASC LIMIT 10", (lat, lat, lng, lng, f'%{q}%'))
+        
+        # 🌟 搜尋一樣套用真實地理距離公式
+        haversine_sql = """
+            SELECT *, 
+            ( 6371000 * acos( least(1.0, cos( radians(%s) ) * cos( radians(lat) ) * cos( radians(lng) - radians(%s) ) + sin( radians(%s) ) * sin( radians(lat) ) ) ) ) AS dist 
+            FROM restaurants 
+            WHERE name ILIKE %s
+            ORDER BY dist ASC LIMIT 20
+        """
+        cursor.execute(haversine_sql, (lat, lng, lat, f'%{q}%'))
         stores = cursor.fetchall()
         conn.close()
         return jsonify(get_restaurant_details(stores))
