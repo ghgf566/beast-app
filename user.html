@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BEAST 仲夏夜之夢</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+TC:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css?v=3.0">
+</head>
+<body>
+    
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- 🌟 重構：加入全局搜尋框的導覽列 -->
+    <nav class="app-navbar">
+        <a href="#" class="nav-logo" onclick="location.reload()"><i class="fa-solid fa-utensils"></i> BEAST</a>
+        
+        <div class="nav-search-container" id="nav-search-container" style="display: none;">
+            <div class="nav-search-box">
+                <input type="text" id="nav-search-input" placeholder="搜尋王道餐廳..." onkeyup="if(event.key==='Enter') searchRestaurants()">
+                <i class="fa-solid fa-magnifying-glass" onclick="searchRestaurants()"></i>
+            </div>
+            <!-- 搜尋結果下拉選單 -->
+            <div id="search-dropdown-menu" class="search-dropdown"></div>
+        </div>
+
+        <div id="nav-actions">
+            <button class="nav-btn" onclick="document.getElementById('auth-modal').classList.add('active')">登入 / 註冊</button>
+        </div>
+    </nav>
+
+    <!-- 1. Landing Page -->
+    <div id="view-landing" class="landing-view">
+        <section class="hero-section">
+            <div class="hero-bg-image"></div>
+            <div class="glow-circles"><div class="circle circle-1"></div></div>
+            <h1 class="hero-title">仲夏夜之夢</h1>
+            <p class="hero-subtitle">全台首創會員制美食地圖<br>結合 IoT 感官追蹤，發掘城市中最野性的美味特質。</p>
+            <div class="hero-btn-wrapper">
+                <button class="hero-btn" onclick="document.getElementById('auth-modal').classList.add('active')">成為探索者</button>
+            </div>
+        </section>
+
+        <section class="info-section">
+            <div class="info-card">
+                <h3><i class="fa-solid fa-triangle-exclamation"></i> 評論真實性危機</h3>
+                <p>當前主流平台常受「打卡送小菜」或虛假評論影響，導致評分失真。面對海量資訊，您是否也曾因缺乏有效篩選機制而感到選擇困難？</p>
+            </div>
+            <div class="info-card">
+                <h3><i class="fa-solid fa-microchip"></i> BEAST 專機專用感官模組</h3>
+                <p>我們結合客製化 IoT 設備，綁定帳號後能即時監測您所在餐廳的<strong>溫度、濕度與噪音</strong>。透過獨家的「王道演算法」，為您篩選出最具統治力的美食體驗。</p>
+            </div>
+            
+            <div class="info-card center" style="padding: 0; overflow: hidden; border: none; background: transparent;">
+                <h3 style="margin: 30px 0; display: flex; justify-content: center;">開發團隊：仲夏夜之夢</h3>
+                <div class="if-team-grid" style="border-radius: 15px;">
+                    <div class="if-team-card">
+                        <img src="img/team/image0-removebg-preview.png" onerror="this.src='https://via.placeholder.com/400'">
+                        <div class="if-team-overlay"><h4>洪忠育</h4><p>隊長 | IoT軟硬體</p></div>
+                    </div>
+                    <div class="if-team-card">
+                        <img src="img/team/image1-removebg-preview.png" onerror="this.src='https://via.placeholder.com/400'">
+                        <div class="if-team-overlay"><h4>陳昱廷</h4><p>組員 | 網頁全端框架</p></div>
+                    </div>
+                    <div class="if-team-card">
+                        <img src="img/team/image2-removebg-preview.png" onerror="this.src='https://via.placeholder.com/400'">
+                        <div class="if-team-overlay"><h4>陳建均</h4><p>組員 | 軟硬整合優化</p></div>
+                    </div>
+                    <div class="if-team-card">
+                        <img src="img/team/image3-removebg-preview.png" onerror="this.src='https://via.placeholder.com/400'">
+                        <div class="if-team-overlay"><h4>王鈞翺</h4><p>組員 | 測試報告反饋</p></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 2. App 地圖視圖 -->
+    <div id="view-app" class="app-view">
+        <div id="map-container"></div>
+
+        <div class="top-ui-wrapper">
+            <!-- 🌟 舊的搜尋框已被移除，只保留狀態指示燈 -->
+            <div class="mini-status-bar">
+                <span class="status-dot pulsing" id="status-dot"></span>
+                <span id="connection-status">等待設備連線...</span>
+            </div>
+        </div>
+
+        <div class="fab-container left">
+            <button class="fab-btn iot" onclick="document.getElementById('iot-sheet').classList.add('active')">
+                <i class="fa-solid fa-satellite-dish"></i>
+                <span id="iot-draft-badge" class="draft-badge hidden">0</span>
+            </button>
+        </div>
+
+        <div class="fab-container right">
+            <!-- 🌟 新增：回到我的定位按鈕 -->
+            <button id="btn-my-location" class="fab-btn my-loc-btn" onclick="backToMyLocation()" style="margin-bottom: 10px;">
+                <i class="fa-solid fa-location-crosshairs"></i>
+            </button>
+
+            <div id="record-timer" class="floating-timer">00:00</div>
+            <button id="fab-record" class="fab-btn" onclick="toggleRecording()">
+                <i id="record-icon" class="fa-solid fa-podcast"></i>
+            </button>
+        </div>
+
+        <!-- 底部地標抽屜 -->
+        <div id="bottom-drawer" class="bottom-sheet visible">
+            <div class="drag-handle" onclick="toggleDrawerExpand('bottom-drawer')"></div>
+            <div id="pane-list" class="flex-1" style="display: flex; flex-direction: column; overflow: hidden;">
+                <div class="sheet-header" onclick="toggleDrawerExpand('bottom-drawer')">
+                    <h3 id="drawer-title">📍 周邊王道美食推薦</h3>
+                    <span id="btn-toggle-more" class="btn-toggle-more">展開選單</span>
+                </div>
+                <div class="restaurant-list" id="restaurant-list"></div>
+            </div>
+
+            <!-- 餐廳詳情 -->
+            <div id="pane-detail" class="restaurant-list detail-pane">
+                <div class="detail-header">
+                    <i class="fa-solid fa-arrow-left detail-back-icon" onclick="backToListPane()"></i>
+                    <h3 id="det-name" class="detail-title">餐廳名稱</h3>
+                </div>
+                <div class="rating-summary-box">
+                    <div>
+                        <div class="big-rating" id="det-big-star">0.0</div>
+                        <div class="review-count-text" id="det-review-count">0 則</div>
+                    </div>
+                    <div class="rating-bars">
+                        <div class="bar-row"><span>5星</span><div class="bar-bg"><div id="star-bar-5" class="bar-fill"></div></div><span id="star-num-5">0</span></div>
+                        <div class="bar-row"><span>4星</span><div class="bar-bg"><div id="star-bar-4" class="bar-fill"></div></div><span id="star-num-4">0</span></div>
+                        <div class="bar-row"><span>3星</span><div class="bar-bg"><div id="star-bar-3" class="bar-fill"></div></div><span id="star-num-3">0</span></div>
+                        <div class="bar-row"><span>2星</span><div class="bar-bg"><div id="star-bar-2" class="bar-fill"></div></div><span id="star-num-2">0</span></div>
+                        <div class="bar-row"><span>1星</span><div class="bar-bg"><div id="star-bar-1" class="bar-fill"></div></div><span id="star-num-1">0</span></div>
+                    </div>
+                </div>
+                
+                <div class="env-stats-row">
+                    <span class="env-temp"><i class="fa-solid fa-temperature-half"></i> <span id="det-temp">--</span>°C</span>
+                    <span class="env-humid"><i class="fa-solid fa-droplet"></i> <span id="det-humid">--</span>%</span>
+                    <span class="env-noise"><i class="fa-solid fa-volume-high"></i> <span id="det-noise">--</span>dB</span>
+                </div>
+                
+                <div class="info-row"><i class="fa-solid fa-clock"></i> 營業時間: <span id="det-hours">--</span></div>
+                <div class="info-row"><i class="fa-solid fa-map-marked-alt"></i> 地址: <span id="det-addr">--</span></div>
+                
+                <div class="chart-wrapper">
+                    <canvas id="envRadarChart"></canvas>
+                </div>
+
+                <h4 class="review-header"><i class="fa-solid fa-comments"></i> 饕客點評</h4>
+                <div id="det-reviews-box" class="reviews-box"></div>
+            </div>
+        </div>
+
+        <!-- IoT 控制面板與草稿匣 -->
+        <div id="iot-sheet">
+            <div class="drag-handle" onclick="document.getElementById('iot-sheet').classList.remove('active')"></div>
+            <div class="sheet-header" onclick="document.getElementById('iot-sheet').classList.remove('active')">
+                <h3 class="iot-sheet-header"><i class="fa-solid fa-microchip"></i> 設備狀態與草稿匣</h3>
+                <i class="fa-solid fa-chevron-down"></i>
+            </div>
+            
+            <div style="padding: 0 20px 20px 20px; overflow-y: auto; max-height: calc(80vh - 60px);">
+                <div class="sim-mode-box">
+                    <div>
+                        <strong class="sim-mode-title">前端模擬模式</strong>
+                        <span class="sim-mode-desc">無設備連線時開啟</span>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="sim-toggle"><span class="slider"></span></label>
+                </div>
+                
+                <div class="iot-sensor-card temp">
+                    <span class="label"><i class="fa-solid fa-temperature-half"></i> 溫度</span>
+                    <span class="iot-val-text"><span id="iot-val-temp">0.0</span> °C</span>
+                </div>
+                <div class="iot-sensor-card humid">
+                    <span class="label"><i class="fa-solid fa-droplet"></i> 濕度</span>
+                    <span class="iot-val-text"><span id="iot-val-humid">0.0</span> %</span>
+                </div>
+                <div class="iot-sensor-card noise">
+                    <span class="label"><i class="fa-solid fa-volume-high"></i> 噪音</span>
+                    <span class="iot-val-text"><span id="iot-val-noise">0.0</span> dB</span>
+                </div>
+
+                <h3 class="drafts-header"><i class="fa-solid fa-box-archive"></i> 待發布草稿 (<span id="iot-draft-count">0</span>)</h3>
+                <div id="iot-drafts-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 獨立分頁 (個人中心) -->
+    <div id="page-profile" class="full-page-overlay">
+        <div class="page-header">
+            <button onclick="document.getElementById('page-profile').classList.remove('active')"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2>會員中心</h2>
+        </div>
+        <div class="page-content">
+            <div class="profile-header-container">
+                <div class="user-avatar-large">
+                    <img src="" id="profile-page-avatar" style="display:none;" onerror="this.style.display='none'; document.getElementById('profile-page-icon').style.display='block';">
+                    <i class="fa-solid fa-user" id="profile-page-icon"></i>
+                </div>
+                <h3 id="profile-page-name" class="detail-title" style="margin-bottom: 5px;">Name</h3>
+                <span class="badge-user" id="profile-page-role">USER</span>
+            </div>
+
+            <div class="setting-card">
+                <h4 class="setting-title"><i class="fa-solid fa-gear"></i> 個人資料設定</h4>
+                <label class="setting-label">變更暱稱</label>
+                <input type="text" id="prof-name" class="cyber-input">
+                <label class="setting-label">變更頭像 (圖片網址)</label>
+                <input type="text" id="prof-avatar" class="cyber-input" placeholder="例如: https://imgur.com/xxx.png">
+                <label class="setting-label">修改密碼 (不改則留空)</label>
+                <input type="password" id="prof-pwd" class="cyber-input" placeholder="輸入新密碼">
+                <button class="hero-btn" onclick="saveProfile()">儲存變更</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 獨立分頁 (設備與網路管理) -->
+    <div id="page-device" class="full-page-overlay">
+        <div class="page-header">
+            <button onclick="document.getElementById('page-device').classList.remove('active')"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2>設備與網路管理</h2>
+        </div>
+        <div class="page-content">
+            <div class="profile-header-container" style="margin-bottom: 20px;">
+                <i class="fa-solid fa-satellite-dish" style="font-size: 3rem; color: #00ff87; filter: drop-shadow(0 0 15px rgba(0,255,135,0.4)); margin-bottom: 10px;"></i>
+                <h3 class="detail-title">BEAST 專機綁定設定</h3>
+            </div>
+
+            <div class="setting-card">
+                <h4 class="setting-title"><i class="fa-solid fa-link"></i> 綁定設備識別碼</h4>
+                <p class="setting-desc">輸入硬體設備背面的序號。綁定後即可專屬接收其傳送至雲端的草稿。</p>
+                <input type="text" id="bind-device-id" class="cyber-input" placeholder="例如: BEAST-001">
+                <button class="hero-btn" onclick="saveDeviceBinding()">確認綁定設備</button>
+            </div>
+
+            <div class="usb-card">
+                <h4 class="setting-title"><i class="fa-brands fa-usb"></i> USB 寫入 Wi-Fi 設定</h4>
+                <p class="setting-desc">
+                    外出前請將 ESP32 接上電腦 USB。在此輸入您的手機熱點，設定將直接燒入設備記憶體！
+                    <br><span class="usb-warning">(⚠️ 僅支援電腦版 Chrome / Edge)</span>
+                </p>
+                <input type="text" id="usb-ssid" class="cyber-input" placeholder="手機熱點名稱 (SSID)">
+                <input type="password" id="usb-pass" class="cyber-input" placeholder="熱點密碼">
+                <div class="flex-gap-10" style="margin-top: 5px;">
+                    <button class="hero-btn btn-outline" id="btn-connect-usb" onclick="connectUSB()">1. 連接 USB</button>
+                    <button class="hero-btn" id="btn-write-usb" style="background: #a0a0c0; cursor: not-allowed;" onclick="writeWifiToDevice()" disabled>2. 寫入設定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🌟 新增：關於我們 (團隊介紹) 獨立分頁 -->
+    <div id="page-team" class="full-page-overlay">
+        <!-- 透明毛玻璃 Header -->
+        <div class="page-header" style="background: rgba(8,8,16,0.6); backdrop-filter: blur(10px); border-bottom: none;">
+            <button onclick="document.getElementById('page-team').classList.remove('active')"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2>關於我們</h2>
+        </div>
+        
+        <!-- 取消 Padding 以便讓網格貼齊邊緣 -->
+        <div class="page-content" style="padding: 0;">
+            
+            <!-- 🌟 滾動霧化視差區塊 -->
+            <div class="team-intro-section">
+                <div id="team-intro-container" class="team-intro-container">
+                    <h3 class="team-title">開發團隊：仲夏夜之夢</h3>
+                    <p class="team-desc">
+                        人類有三大慾望，食慾，性慾，睡眠欲，而在這三大慾望當中，因為食慾是滿足人類生存需求的慾望，所以，滿足食慾的行為，在這三者中，優先性是第一位的。如果能在進食的過程中，吃下了美味的食物，也能讓人類無比愉快，而在現實生活中，存在著對於這種快感執著追求的人，我們通常把這種人稱之為美食家，而本餐廳，則專門為那些厭倦世間常見美食的人，量體裁衣，提供符合他們身份的美食。
+                    </p>
+                </div>
+            </div>
+
+            <!-- 🌟 Infinite Flight 風格團隊網格 -->
+            <div class="if-team-grid">
+                <div class="if-team-card">
+                    <img src="img/team/image0-removebg-preview.png" onerror="this.src='https://via.placeholder.com/400'">
+                    <div class="if-team-overlay">
+                        <h4>洪忠育</h4>
+                        <p>隊長 | IoT軟硬體</p>
+                    </div>
+                </div>
+                <div class="if-team-card">
+                    <img src="img/team/image1-removebg-preview.png" onerror="this.src='https://via.placeholder.com/400'">
+                    <div class="if-team-overlay">
+                        <h4>陳昱廷</h4>
+                        <p>組員 | 網頁全端框架</p>
+                    </div>
+                </div>
+                <div class="if-team-card">
+                    <img src="img/team/image2-removebg-preview.png" onerror="this.src='https://via.placeholder.com/400'">
+                    <div class="if-team-overlay">
+                        <h4>陳建均</h4>
+                        <p>組員 | 軟硬整合優化</p>
+                    </div>
+                </div>
+                <div class="if-team-card">
+                    <img src="img/team/image3-removebg-preview.png" onerror="this.src='https://via.placeholder.com/400'">
+                    <div class="if-team-overlay">
+                        <h4>王鈞翺</h4>
+                        <p>組員 | 測試報告反饋</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 底部留白 -->
+            <div style="height: 15vh; background: #080810;"></div>
+        </div>
+    </div>
+
+    <!-- 下拉選單 -->
+    <div id="user-dropdown-menu" class="user-dropdown">
+        <div class="dropdown-header">
+            <div class="user-avatar-large menu-avatar" style="width: 55px; height: 55px; border-width: 2px; margin: 0;">
+                <img id="menu-avatar-img" src="" style="display:none;">
+                <i id="menu-avatar-icon" class="fa-solid fa-user" style="font-size: 1.5rem;"></i>
+            </div>
+            <div class="dropdown-header-info">
+                <h3 id="menu-username" class="menu-user-title" style="font-size: 1.1rem; margin-bottom: 3px; color: #ffffff;">Name</h3>
+                <div class="menu-device-info" style="margin: 0; font-size: 0.75rem; color: #00f2fe;">已綁定設備: <span id="menu-device-id" style="color: #00ff87;">未綁定</span></div>
+            </div>
+        </div>
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-actions">
+            <button class="dropdown-btn" onclick="toggleUserDropdown(); openProfilePage();"><i class="fa-solid fa-user-gear"></i> 管理您的個人帳號</button>
+            <button class="dropdown-btn" onclick="toggleUserDropdown(); openDevicePage();"><i class="fa-solid fa-satellite-dish"></i> 設備與網路管理</button>
+            <button class="dropdown-btn" onclick="toggleUserDropdown(); openTeamPage();"><i class="fa-solid fa-users"></i> 關於我們 (開發團隊)</button>
+        </div>
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-actions">
+            <button class="dropdown-btn danger" onclick="toggleUserDropdown(); logout();"><i class="fa-solid fa-right-from-bracket"></i> 登出目前帳號</button>
+        </div>
+    </div>
+
+    <!-- 登入與發布 Modal 保留 -->
+    <div id="auth-modal" class="cyber-modal">
+        <div class="cyber-modal-content">
+            <h2 class="auth-title"><i class="fa-solid fa-utensils"></i> BEAST 登入</h2>
+            <div id="auth-error" class="auth-error-msg"></div>
+            <input type="text" id="auth-username" class="cyber-input" placeholder="帳號">
+            <input type="password" id="auth-password" class="cyber-input" placeholder="密碼">
+            <div class="flex-gap-10">
+                <button class="hero-btn flex-1" onclick="submitAuth('login')">登入</button>
+                <button class="hero-btn btn-outline flex-1" onclick="submitAuth('register')">註冊</button>
+            </div>
+            <button class="btn-text-muted" onclick="document.getElementById('auth-modal').classList.remove('active')">取消</button>
+        </div>
+    </div>
+
+    <div id="publish-modal" class="cyber-modal">
+        <div class="cyber-modal-content">
+            <h3 class="pub-title"><i class="fa-solid fa-cloud-arrow-up"></i> 定位與歸檔</h3>
+            <div class="pub-stats-box"><span class="env-success">⏱️ <span id="pub-duration" style="color:#00ff87;">0</span>s</span><span>🌡️ <span id="pub-temp">0</span>°C</span><span>🔊 <span id="pub-noise">0</span>dB</span></div>
+            <label class="setting-label">📍 選擇紀錄的所在地標</label>
+            <select id="pub-restaurant-select" class="cyber-select"></select>
+            <div class="pub-add-new-btn"><span onclick="document.getElementById('pub-new-rest-form').classList.toggle('hidden')">➕ 沒看到店家？手動創建...</span></div>
+            <div id="pub-new-rest-form" class="pub-new-rest-form hidden">
+                <input type="text" id="pub-new-name" class="cyber-input" placeholder="新店家名稱 (必填)">
+                <input type="text" id="pub-new-hours" class="cyber-input" placeholder="營業時間 (選填)">
+            </div>
+            <label class="setting-label">✍️ 紀錄名稱與評價</label>
+            <input type="text" id="pub-record-name" class="cyber-input" placeholder="為這筆紀錄命名 (例如: 期中聚餐)">
+            <select id="pub-rating" class="cyber-select">
+                <option value="5">⭐⭐⭐⭐⭐ 極神</option>
+                <option value="4">⭐⭐⭐⭐ 美味</option>
+                <option value="3">⭐⭐⭐ 普普</option>
+                <option value="2">⭐⭐ 不佳</option>
+                <option value="1">⭐ 糟糕</option>
+            </select>
+            <textarea id="pub-review" class="cyber-input" rows="3" placeholder="描述您的體驗..." style="resize:none;"></textarea>
+            <div class="flex-gap-10">
+                <button class="hero-btn btn-text-muted flex-1" style="border:1px solid #a0a0c0; margin-top:0;" onclick="document.getElementById('publish-modal').classList.remove('active')">稍後再發布</button>
+                <button class="hero-btn flex-1" style="margin-top:0;" onclick="submitPublish()">確認歸檔</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="user.js?v=3.0"></script>
+</body>
+</html>
