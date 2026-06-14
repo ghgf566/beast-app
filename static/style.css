@@ -148,7 +148,7 @@ body, html {
     font-size: 3rem;
     background: var(--primary-gradient);
     -webkit-background-clip: text;
-    background-clip: text;
+    background-clip: text; /* 🌟 補上標準寫法消除警告 */
     -webkit-text-fill-color: transparent;
     margin-bottom: 15px;
     animation: spin-pulse 4s infinite linear;
@@ -337,14 +337,21 @@ body, html {
 .header-logo i {
     background: var(--primary-gradient);
     -webkit-background-clip: text;
-    background-clip: text;
+    background-clip: text; /* 🌟 補上標準寫法消除警告 */
     -webkit-text-fill-color: transparent;
 }
 
 .highlight {
     background: var(--primary-gradient);
     -webkit-background-clip: text;
-    background-clip: text;
+    background-clip: text; /* 🌟 補上標準寫法消除警告 */
+    -webkit-text-fill-color: transparent;
+}
+
+.highlight {
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    background-clip: text; /* 🌟 補上標準寫法消除警告 */
     -webkit-text-fill-color: transparent;
 }
 
@@ -967,12 +974,58 @@ tbody td {
 ========================================= */
 
 /* 地圖與導航 */
+/* 導覽列與全局搜尋框 */
 .app-navbar { position: fixed; top: 0; left: 0; width: 100%; height: 60px; background: rgba(8, 8, 16, 0.85); backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; z-index: 2000; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .nav-logo { font-size: 1.5rem; font-weight: 800; background: var(--primary-gradient); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-decoration: none; display: flex; align-items: center; gap: 8px; }
 .nav-btn { background: transparent; border: 1px solid #00f2fe; color: #00f2fe; padding: 6px 16px; border-radius: 20px; cursor: pointer; transition: 0.3s; font-weight: bold; }
 .user-avatar-btn { width: 38px; height: 38px; border-radius: 50%; background: #00f2fe; border: 2px solid #00f2fe; cursor: pointer; display: flex; justify-content: center; align-items: center; overflow: hidden; box-shadow: 0 0 10px rgba(0,242,254,0.4); }
 .user-avatar-btn img { width: 100%; height: 100%; object-fit: cover; }
 .user-avatar-btn i { color: #080810; font-size: 1.2rem; }
+
+/* 🌟 新增：導覽列內的搜尋容器與選單 */
+.nav-search-container { flex: 1; max-width: 350px; margin: 0 15px; position: relative; }
+@media (max-width: 600px) { .nav-search-container { max-width: 200px; } .nav-logo span { display: none; } } /* 手機版縮小 */
+.nav-search-box { background: rgba(255,255,255,0.1); border: 1px solid rgba(0,242,254,0.3); border-radius: 20px; display: flex; align-items: center; padding: 6px 15px; transition: 0.3s; }
+.nav-search-box:focus-within { border-color: #00f2fe; background: rgba(0,242,254,0.1); box-shadow: 0 0 10px rgba(0,242,254,0.2); }
+.nav-search-box input { background: transparent; border: none; color: #fff; width: 100%; outline: none; font-size: 0.9rem; }
+.nav-search-box i { color: #00f2fe; cursor: pointer; margin-left: 8px; }
+
+.search-dropdown { position: absolute; top: 45px; left: 0; width: 100%; background: rgba(13,13,26,0.95); border: 1px solid rgba(0,242,254,0.3); border-radius: 12px; max-height: 300px; overflow-y: auto; display: none; flex-direction: column; z-index: 5001; box-shadow: 0 10px 30px rgba(0,0,0,0.8); backdrop-filter: blur(15px); }
+.search-dropdown.show { display: flex; }
+.search-result-item { padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: 0.2s; }
+.search-result-item:last-child { border-bottom: none; }
+.search-result-item:hover { background: rgba(0,242,254,0.1); }
+.search-result-title { color: #00f2fe; font-weight: bold; font-size: 0.95rem; }
+.search-result-dist { color: #a0a0c0; font-size: 0.8rem; }
+
+/* 🌟 新增：回到我的定位按鈕 (My Location) */
+.my-loc-btn { background: rgba(13,13,26,0.95) !important; border-color: #a0a0c0 !important; color: #a0a0c0 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important; transition: 0.3s; }
+.my-loc-btn:hover { border-color: #00f2fe !important; color: #00f2fe !important; box-shadow: 0 0 15px rgba(0,242,254,0.4) !important; }
+
+
+/* 🌟 修復 2：Toast 通知改為右上角滑出，設定最高圖層 99999 絕對不被擋住 */
+.toast-container { position: fixed; top: 80px; right: 20px; left: auto; transform: none; z-index: 99999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.toast { background: rgba(13, 13, 26, 0.95); border-left: 4px solid #00f2fe; color: #fff; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); transform: translateX(120%); opacity: 0; transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); display: flex; align-items: center; gap: 10px; font-size: 0.9rem; min-width: 250px; backdrop-filter: blur(10px); }
+.toast.show { transform: translateX(0); opacity: 1; pointer-events: auto; }
+.toast.error { border-color: #ff3366; }
+.toast.success { border-color: #00ff87; }
+.toast i { font-size: 1.1rem; }
+
+/* 🌟 修復 3：搜尋按鈕改為 fixed，不受底下排版擠壓影響 */
+.btn-search-area { position: fixed; top: 85px; left: 50%; transform: translateX(-50%); z-index: 3000; background: rgba(13, 13, 26, 0.9); border: 1px solid #00f2fe; color: #00f2fe; padding: 8px 20px; border-radius: 30px; box-shadow: 0 4px 15px rgba(0,242,254,0.2); cursor: pointer; transition: 0.3s; font-weight: bold; font-size: 0.85rem; backdrop-filter: blur(5px); }
+.btn-search-area:hover { background: #00f2fe; color: #080810; }
+
+/* 🌟 選單下拉的 CSS 修復 (保證置頂最上層) */
+.user-dropdown { position: fixed; top: 70px; right: 20px; background: rgba(13,13,26,0.95); backdrop-filter: blur(15px); border: 1px solid rgba(0,242,254,0.3); border-radius: 12px; width: 280px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 9999; opacity: 0; pointer-events: none; transform: translateY(-10px); transition: 0.3s; }
+.user-dropdown.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.dropdown-header { padding: 20px; display: flex; align-items: center; gap: 15px; }
+.dropdown-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 0 15px; }
+.dropdown-actions { padding: 10px 0; }
+.dropdown-btn { width: 100%; text-align: left; background: transparent; border: none; padding: 12px 20px; color: #fff; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: 0.2s; }
+.dropdown-btn:hover { background: rgba(255, 255, 255, 0.05); color: #00f2fe; }
+.dropdown-btn i { color: #00f2fe; width: 20px; text-align: center; }
+.dropdown-btn.danger:hover { background: rgba(255,51,102,0.1); color: #ff3366; }
+.dropdown-btn.danger:hover i { color: #ff3366; }
 
 /* Landing View */
 .landing-view { overflow-y: auto; height: 100vh; padding-top: 60px; box-sizing: border-box; }
@@ -992,7 +1045,11 @@ tbody td {
 }
 
 .hero-title { 
-    font-size: 3.5rem; font-weight: 800; background: var(--primary-gradient); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px; 
+    font-size: 3.5rem; font-weight: 800; background: var(--primary-gradient); 
+    -webkit-background-clip: text; 
+    background-clip: text; /* 🌟 補上標準寫法消除警告 */
+    -webkit-text-fill-color: transparent; 
+    margin-bottom: 10px; 
     /* 🌟 將標題層級提高，確保蓋在背景圖之上 */
     position: relative; z-index: 2;
 }
@@ -1025,7 +1082,7 @@ tbody td {
 .app-view { display: none; width: 100vw; height: 100vh; position: relative; padding-top: 60px; box-sizing: border-box; }
 #map-container { position: absolute; top: 60px; left: 0; width: 100%; height: calc(100% - 60px); z-index: 1; }
 .dark-map-tiles { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
-.top-ui-wrapper { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 500px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+.top-ui-wrapper { position: absolute; top: 75px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 500px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
 .search-bar-wrapper { display: flex; gap: 8px; width: 100%; align-items: center; }
 .search-box { flex: 1; background: rgba(13, 13, 26, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(0,242,254,0.3); border-radius: 30px; display: flex; align-items: center; padding: 10px 18px; box-shadow: 0 5px 15px rgba(0,0,0,0.4); }
 .search-box input { flex: 1; background: transparent; border: none; color: #fff; outline: none; }
@@ -1108,7 +1165,7 @@ tbody td {
 .sim-mode-title { color: #fff; font-size: 0.95rem; display: block; }
 .sim-mode-desc { color: #a0a0c0; font-size: 0.8rem; }
 
-/* IoT 卡片 */
+/* Io/* IoT 卡片 */
 .iot-sensor-card { display: flex; justify-content: space-between; padding: 12px; border-radius: 10px; margin-bottom: 10px; align-items: center; }
 .iot-sensor-card.temp { background: rgba(255,126,95,0.1); border: 1px solid rgba(255,126,95,0.2); }
 .iot-sensor-card.temp .label { color: #ff7e5f; font-weight: bold; }
@@ -1171,139 +1228,68 @@ input:checked + .slider:before { transform: translateX(16px); }
 .btn-danger-outline { background: rgba(255,51,102,0.1); border: 1px solid #ff3366; color: #ff3366; }
 .btn-text-muted { width: 100%; background: transparent; border: none; color: #a0a0c0; margin-top: 15px; cursor: pointer; }
 
-/* Modal 專用排版 */
-.menu-avatar { margin: 0 auto 15px auto; width: 80px; height: 80px; }
-.menu-user-title { color: #00f2fe; margin-top: 0; }
-.menu-device-info { margin-bottom: 20px; font-size: 0.85rem; color: #a0a0c0; }
-.menu-device-info span { color: #00ff87; }
-.auth-title { text-align: center; color: #00f2fe; margin-bottom: 20px; }
-.auth-error-msg { color: #ff3366; font-size: 0.9rem; margin-bottom: 10px; text-align: center; display: none; }
-.pub-title { color: #00f2fe; margin-top: 0; border-bottom: 1px solid rgba(0,242,254,0.3); padding-bottom: 10px; }
-.pub-stats-box { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 15px; display: flex; justify-content: space-between; }
-.pub-add-new-btn { text-align: right; margin-bottom: 10px; }
-.pub-add-new-btn span { color: #00f2fe; font-size: 0.85rem; cursor: pointer; }
-.pub-new-rest-form { margin-bottom: 15px; padding-left: 10px; border-left: 2px solid #00f2fe; }
-.flex-gap-10 { display: flex; gap: 10px; margin-top: 10px; }
-.flex-1 { flex: 1; margin-top: 0; }
-.hidden { display: none !important; }
+/* =========================================
+   🌟 修復表格白字與 Hover 特效
+========================================= */
+table th { padding: 12px 10px; color: #00f2fe; border-bottom: 1px solid rgba(0, 242, 254, 0.3); font-weight: 600; }
+table td { color: #ffffff !important; padding: 12px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.2s; }
+table tbody tr:hover td { background: rgba(0, 242, 254, 0.08); }
 
 /* =========================================
-   🌟 第二階段升級：Toast 通知與地圖進階特效 
+   🌟 終端機日誌系統樣式
 ========================================= */
-
-/* Toast 輕提示框 */
-.toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
-.toast { background: rgba(13, 13, 26, 0.95); border-left: 4px solid #00f2fe; color: #fff; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); transform: translateY(-20px); opacity: 0; transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); display: flex; align-items: center; gap: 10px; font-size: 0.9rem; min-width: 250px; backdrop-filter: blur(10px); }
-.toast.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
-.toast.error { border-color: #ff3366; }
-.toast.success { border-color: #00ff87; }
-.toast i { font-size: 1.1rem; }
-
-/* 在此區域搜尋按鈕 (仿 Google Map) */
-.btn-search-area { position: absolute; top: 85px; left: 50%; transform: translateX(-50%); z-index: 1000; background: rgba(13, 13, 26, 0.9); border: 1px solid #00f2fe; color: #00f2fe; padding: 8px 20px; border-radius: 30px; box-shadow: 0 4px 15px rgba(0,242,254,0.2); cursor: pointer; transition: 0.3s; font-weight: bold; font-size: 0.85rem; backdrop-filter: blur(5px); }
-.btn-search-area:hover { background: #00f2fe; color: #080810; }
-
-/* 地圖實體圖釘特效 */
-.store-marker-icon { color: #f093fb; font-size: 28px; filter: drop-shadow(0 0 10px #f093fb); text-align: center; margin-top: -14px; margin-left: -14px; transition: 0.2s; }
-.store-marker-icon:hover { transform: scale(1.2); color: #fff; filter: drop-shadow(0 0 15px #fff); }
-
-/* Chart 雷達圖容器 */
-.chart-wrapper { width: 100%; height: 220px; margin-top: 20px; margin-bottom: 10px; position: relative; }
-
-/* =========================================
-   🌟 第三階段升級：Google 風格頭像下拉選單 
-========================================= */
-
-.user-dropdown {
-    position: fixed;
-    top: 70px; /* 定位在導航列下方 */
-    right: 20px;
-    width: 320px;
-    background: rgba(15, 15, 27, 0.95);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
-    z-index: 3000;
-    padding: 15px;
-    
-    /* 預設隱藏並稍微往上偏移，製造滑出感 */
-    opacity: 0;
-    transform: translateY(-15px);
-    pointer-events: none;
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-/* 當被觸發時浮現 */
-.user-dropdown.show {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-}
-
-.dropdown-header {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    padding: 10px 5px 15px 5px;
-}
-
-.dropdown-header-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.dropdown-divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.08);
-    margin: 5px 0;
-}
-
-.dropdown-actions {
-    display: flex;
-    flex-direction: column;
-    padding: 5px 0;
-}
-
-.dropdown-btn {
-    background: transparent;
-    border: none;
-    color: #fff;
-    padding: 12px 15px;
+.cyber-terminal {
+    background: #05050a;
+    border: 1px solid rgba(0, 242, 254, 0.3);
     border-radius: 8px;
-    text-align: left;
-    font-size: 0.95rem;
-    cursor: pointer;
-    transition: 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    padding: 15px;
+    height: 350px;
+    overflow-y: auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85rem;
+    color: #a0a0c0; 
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+}
+.cyber-terminal p { margin: 0 0 6px 0; word-wrap: break-word; border-bottom: 1px dashed rgba(255,255,255,0.05); padding-bottom: 4px; }
+.cyber-terminal p:last-child { border-bottom: none; }
+.cyber-terminal .log-error { color: #ff3366; font-weight: bold; }
+.cyber-terminal .log-warn { color: #ff9f43; }
+.cyber-terminal .log-success { color: #00ff87; }
+.cyber-terminal::-webkit-scrollbar { width: 6px; }
+.cyber-terminal::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+.cyber-terminal::-webkit-scrollbar-thumb:hover { background: rgba(0, 242, 254, 0.6); }
+
+/* =========================================
+   🌟 地圖懸浮提示框 (Tooltip) 專屬科幻樣式
+========================================= */
+.leaflet-tooltip.cyber-map-tooltip {
+    background: rgba(13, 13, 26, 0.95);
+    border: 1px solid #f093fb;
+    box-shadow: 0 0 15px rgba(240, 147, 251, 0.4);
+    color: #fff;
+    border-radius: 8px;
+    padding: 8px 12px;
+    backdrop-filter: blur(5px);
+    font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+    opacity: 1 !important; /* 覆蓋 Leaflet 預設透明度 */
+    pointer-events: none; /* 確保滑鼠穿透，不影響點擊圖釘 */
 }
 
-.dropdown-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
+/* 覆蓋 Tooltip 下方小三角形的顏色，讓它跟邊框一樣是粉色 */
+.leaflet-tooltip-top.cyber-map-tooltip::before {
+    border-top-color: #f093fb;
 }
 
-.dropdown-btn i {
-    font-size: 1.1rem;
+.map-tooltip-content strong {
+    color: #f093fb;
+    font-size: 1.05rem;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.map-tooltip-content span {
     color: #a0a0c0;
-    width: 24px;
-    text-align: center;
-    transition: 0.2s;
-}
-
-.dropdown-btn:hover i {
-    color: #00f2fe;
-}
-
-.dropdown-btn.danger:hover {
-    background: rgba(255, 51, 102, 0.1);
-    color: #ff3366;
-}
-
-.dropdown-btn.danger:hover i {
-    color: #ff3366;
+    font-size: 0.85rem;
 }
 
 /* =========================================

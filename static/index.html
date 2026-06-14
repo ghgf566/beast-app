@@ -47,7 +47,7 @@
     <!-- 登入區塊 -->
     <div id="auth-container" class="container">
         <div class="auth-card glass-panel">
-            <div class="auth-header"><i class="fa-solid fa-microchip logo-icon"></i><h2>BEAST 總部控制台</h2><p style="color:#ff3366; font-size:0.85rem;">⚠️ 僅限擁有管理權限之帳戶登入</p></div>
+            <div class="auth-header"><i class="fa-solid fa-microchip logo-icon"></i><h2 style="color:#ffffff;">BEAST 總部控制台</h2><p style="color:#ff3366; font-size:0.85rem;">⚠️ 僅限擁有管理權限之帳戶登入</p></div>
             <form id="login-form" class="auth-form">
                 <div class="input-group"><i class="fa-solid fa-user"></i><input type="text" id="login-username" placeholder="管理員帳號 (預設: owner)" required></div>
                 <div class="input-group"><i class="fa-solid fa-lock"></i><input type="password" id="login-password" placeholder="密碼" required></div>
@@ -60,7 +60,7 @@
     <!-- 管理儀表板 -->
     <div id="dashboard-container" class="container hidden" style="max-width: 1200px;">
         <header class="dashboard-header glass-panel">
-            <div class="header-logo"><span class="logo-text">BEAST <span class="highlight">Admin Panel</span></span></div>
+            <div class="header-logo"><span class="logo-text" style="color:#ffffff;">BEAST <span class="highlight">Admin Panel</span></span></div>
             <div class="header-controls">
                 <span id="admin-role-badge" class="badge" style="margin-right:15px;">角色</span>
                 <button id="show-team-dash-btn" class="btn btn-icon btn-sm" style="margin-right: 8px;"><i class="fa-solid fa-users"></i> 團隊介紹</button>
@@ -74,6 +74,8 @@
                 <button class="admin-tab active" onclick="switchAdminTab('iot')"><i class="fa-solid fa-satellite-dish"></i> 設備監控</button>
                 <button class="admin-tab" onclick="switchAdminTab('restaurants')"><i class="fa-solid fa-map-location-dot"></i> 地標管理</button>
                 <button class="admin-tab" onclick="switchAdminTab('users')"><i class="fa-solid fa-users-gear"></i> 會員管理</button>
+                <!-- 🌟 新增的日誌面板按鈕 -->
+                <button class="admin-tab" onclick="switchAdminTab('logs')"><i class="fa-solid fa-server"></i> 系統日誌</button>
             </div>
 
             <!-- Tab 1: IoT 即時監控 -->
@@ -90,10 +92,10 @@
                 </div>
 
                 <div class="metrics-grid">
-                    <div class="metric-card glass-panel" id="card-temp"><h3>即時溫度</h3><div class="card-value-wrapper"><span class="card-value" id="val-temp">--.-</span><span class="card-unit">°C</span></div></div>
-                    <div class="metric-card glass-panel" id="card-humid"><h3>即時濕度</h3><div class="card-value-wrapper"><span class="card-value" id="val-humid">--.-</span><span class="card-unit">%</span></div></div>
-                    <div class="metric-card glass-panel" id="card-noise"><h3>即時噪音</h3><div class="card-value-wrapper"><span class="card-value" id="val-noise">--.-</span><span class="card-unit">dB</span></div></div>
-                    <div class="metric-card glass-panel"><h3 style="color:#00f2fe;">狀態</h3><div class="card-value-wrapper"><span id="connection-status" style="font-size:1.2rem;">連線中</span></div></div>
+                    <div class="metric-card glass-panel" id="card-temp" style="color:#ffffff;"><h3>即時溫度</h3><div class="card-value-wrapper"><span class="card-value" id="val-temp">--.-</span><span class="card-unit">°C</span></div></div>
+                    <div class="metric-card glass-panel" id="card-humid" style="color:#ffffff;"><h3>即時濕度</h3><div class="card-value-wrapper"><span class="card-value" id="val-humid">--.-</span><span class="card-unit">%</span></div></div>
+                    <div class="metric-card glass-panel" id="card-noise" style="color:#ffffff;"><h3>即時噪音</h3><div class="card-value-wrapper"><span class="card-value" id="val-noise">--.-</span><span class="card-unit">dB</span></div></div>
+                    <div class="metric-card glass-panel" style="color:#ffffff;"><h3 style="color:#00f2fe;">狀態</h3><div class="card-value-wrapper" style="color:#ffffff;"><span id="connection-status" style="font-size:1.2rem;">連線中</span></div></div>
                 </div>
             </div>
 
@@ -132,6 +134,34 @@
                     </table>
                 </div>
             </div>
+            
+            <!-- 🌟 Tab 4: 系統日誌與快取監控 -->
+            <div id="tab-logs" class="tab-content">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h3 style="margin:0; color:#f093fb;">特調紅茶快取 (Redis) & 系統日誌</h3>
+                    <button class="btn btn-primary btn-sm" onclick="fetchAdminSystem()"><i class="fa-solid fa-rotate-right"></i> 手動刷新</button>
+                </div>
+                
+                <div class="metrics-grid" style="margin-bottom: 20px;">
+                    <div class="metric-card glass-panel" style="padding: 15px;">
+                        <h3 style="color:#00ff87; margin-bottom:8px;"><i class="fa-solid fa-bolt"></i> 快取命中率</h3>
+                        <div class="card-value-wrapper"><span class="card-value" id="sys-hit-rate" style="color:#ffffff;">0.0</span><span class="card-unit">%</span></div>
+                    </div>
+                    <div class="metric-card glass-panel" style="padding: 15px;">
+                        <h3 style="color:#00f2fe; margin-bottom:8px;"><i class="fa-solid fa-bullseye"></i> 記憶體命中 (Hits)</h3>
+                        <div class="card-value-wrapper"><span class="card-value" id="sys-hits" style="color:#ffffff;">0</span><span class="card-unit">次</span></div>
+                    </div>
+                    <div class="metric-card glass-panel" style="padding: 15px;">
+                        <h3 style="color:#ff3366; margin-bottom:8px;"><i class="fa-solid fa-database"></i> 資料庫穿透 (Misses)</h3>
+                        <div class="card-value-wrapper"><span class="card-value" id="sys-misses" style="color:#ffffff;">0</span><span class="card-unit">次</span></div>
+                    </div>
+                </div>
+
+                <div class="cyber-terminal" id="sys-terminal">
+                    <p style="color:#a0a0c0;">正在連線至伺服器日誌系統...</p>
+                </div>
+            </div>
+            
         </div>
     </div>
 

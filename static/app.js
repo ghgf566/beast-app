@@ -66,9 +66,48 @@ function switchAdminTab(tabId) {
 
     if (tabId === 'restaurants') fetchAdminRestaurants();
     if (tabId === 'users') fetchAdminUsers();
+    
+    // 🌟 如果切換到日誌面板，啟動自動抓取
+    if (tabId === 'logs') {
+        fetchAdminSystem();
+        if(!window.sysLogInterval) window.sysLogInterval = setInterval(fetchAdminSystem, 3000);
+    } else {
+        if(window.sysLogInterval) { clearInterval(window.sysLogInterval); window.sysLogInterval = null; }
+    }
 }
 
 function startPolling() { latestPollInterval = setInterval(updateLatestData, 1000); }
+
+// 🌟 獲取系統狀態與日誌
+async function fetchAdminSystem() {
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/system`, { headers: { 'Authorization': `Bearer ${getCookie('beast_token')}` } });
+        const d = await res.json();
+        if(d.success) {
+            document.getElementById('sys-hit-rate').textContent = d.cache.hit_rate.toFixed(1);
+            document.getElementById('sys-hits').textContent = d.cache.hits;
+            document.getElementById('sys-misses').textContent = d.cache.misses;
+            
+            const term = document.getElementById('sys-terminal');
+            term.innerHTML = '';
+            
+            if(d.logs.length === 0) {
+                term.innerHTML = '<p style="color:#a0a0c0;">目前尚無系統日誌...</p>';
+            } else {
+                d.logs.forEach(log => {
+                    let cls = '';
+                    if(log.includes('❌') || log.includes('⚠️')) cls = 'log-error';
+                    else if(log.includes('🤖')) cls = 'log-warn';
+                    else if(log.includes('✅') || log.includes('📦') || log.includes('🔑') || log.includes('📝')) cls = 'log-success';
+                    
+                    // 防 XSS 過濾
+                    const safeLog = String(log).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+                    term.innerHTML += `<p class="${cls}">${safeLog}</p>`;
+                });
+            }
+        }
+    } catch(e) {}
+}
 
 async function updateLatestData() {
     const isSimMode = document.getElementById('admin-sim-toggle').checked;
